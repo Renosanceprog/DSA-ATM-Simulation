@@ -6,7 +6,8 @@
 
 using namespace std;
 #define DBFILE ".\\savefile\\db.csv" //TEMPORARY SAVE LOCATION
-
+#define KEYVALUE 187211
+#define PINFILE "pin.code"
 
 struct Account {
     int accountNumber;
@@ -46,7 +47,6 @@ public:
     {
         head = nullptr;
     }
-    //~BankDatabase();
 
     // ADT List Operations
     bool insertAccount(Account newAcc)
@@ -59,7 +59,6 @@ public:
             if (newAcc.accountNumber == p->data.accountNumber) return false;
             p->next = new Node(newAcc);
         }
-        saveToFile();
         return true;
     }
     bool getAccount(int accountNumber, Account &outAccount)
@@ -230,30 +229,248 @@ public:
 class ATM {
 private:
     BankDatabase* db;
+    
+    Account currentSession;
+    bool sessionActive;
 
-    // Helper method for the USB requirement
-    bool checkUSBForPin(int expectedPin); 
+    int encryptCode(int pin){return pin ^ KEYVALUE ^ (KEYVALUE/2) ^ (KEYVALUE*13);}
+    
+    bool detectUSBAndVerifyPin(int expectedPin)
+    {
+        string codeStr;
+        int codeInt;
+        for (int i = 68; i <= 90; i++) {
+            string s = string(1, (char)i) + ":\\pin.code";
+            ifstream file(s);
+            if (file.is_open())
+            {
+                getline(file, codeStr);
+                codeInt = stoi(codeStr);
+                if (codeInt == expectedPin) return true;
+            }
+        }
+        return false;
+    }
 
 public:
-    ATM(BankDatabase* database);
+    ATM(BankDatabase* database)
+    {
+        db = database;
+        currentSession = Account();
+        sessionActive = false;
+    }
 
-    // Transaction Module Signatures
-    int registerAccount(Account newAcc); // Returns status code (e.g., 0 for success, 1 for duplicate ID)
-    bool authenticateUser(int accountNumber); // Triggers the USB check
+    // Registration & Authentication
+    int registerAccount(Account newAcc, char driveLetter) // 0 = Success, 1 = Account already exists on drive, 2 = invalid drive, 3 = duplicate account
+    { 
+        string s = string(1, driveLetter) + ":\\" + PINFILE;
+        fstream file1(s);
+        if (file1.is_open()) return 1;
+
+        ofstream file2(s);
+        if (!file2.is_open()) return 2;
+
+        newAcc.pinCode = encryptCode(newAcc.pinCode);
+        if (!db->insertAccount(newAcc))
+        {
+            file2.close();
+            remove(s.c_str());
+            return 3;
+        }
+        
+        file2<<newAcc.pinCode;
+        db->saveToFile();
+        return 0;
+    };
+
+    bool authenticateUser(int accountNumber, int inputPin)
+    {
+        int pinInt = encryptCode(inputPin);
+        db->getAccount(accountNumber, currentSession);
+        if (pinInt == currentSession.pinCode && detectUSBAndVerifyPin(pinInt))
+        {
+            sessionActive = true;
+            return true;
+        }
+        logout();
+        return false;
+    }
+    void logout(){currentSession = Account(); sessionActive = false;}
     
-    float checkBalance(int accountNumber, bool checkSavings);
-    bool withdraw(int accountNumber, float amount, bool fromSavings);
-    bool deposit(int accountNumber, float amount);
-    bool fundTransfer(int senderAccNum, int receiverAccNum, float amount);
-    bool changePin(int accountNumber, int oldPin, int newPin);
+    float checkBalance(bool checkSavings)
+    {
+        if (!sessionActive) return 0.0f;
+        if (checkSavings) return currentSession.savingsBalance;
+        return currentSession.depositBalance;
+    }
+    
+    bool deposit(float amount)
+    {
+        if (!sessionActive) return false;
+        currentSession.depositBalance += amount;
+        db->updateAccount(currentSession);
+        return true;
+    }
+    
+    bool withdraw(float amount, bool fromSavings)
+    {
+        if (!sessionActive) return false;
+
+        float *balance = (fromSavings) ? &currentSession.savingsBalance : &currentSession.depositBalance;
+        if (!(amount > *balance))
+        {
+            *balance -= amount;
+            db->updateAccount(currentSession);
+            return true;
+        }
+        return false;
+    }
+    bool savingsTransfer(float amount, bool fromSavings){
+        if (!sessionActive) return false;
+
+        float *source = (fromSavings) ? &currentSession.savingsBalance : &currentSession.depositBalance;
+        float *dest = (!fromSavings) ? &currentSession.savingsBalance : &currentSession.depositBalance;
+        if (!(amount > *source))
+        {
+            *source -= amount;
+            *dest += amount;
+            db->updateAccount(currentSession);
+            return true;
+        }
+        return false;
+    }
+    int fundTransfer(int receiverAccNum, float amount){ // 0 = success, -1 = no session running, 1 = insufficient balance, 2 = receiver account does not exist
+        if (!sessionActive) return -1;
+        if (amount > currentSession.depositBalance) return 1;
+
+        Account receiver;
+        if (!db->getAccount(receiverAccNum, receiver)) return 2;
+
+        currentSession.depositBalance -= amount;
+        receiver.depositBalance += amount;
+
+        db->updateAccount(receiver);
+        db->updateAccount(currentSession);
+        return 0;
+    }
+    
+int changePin(int oldPin, int newPin) // 0 = success, 1 = entered old pin does not match current pin, 2 = new pin is same as old pin
+    {
+        int encOld = encryptCode(oldPin);
+        int encNew = encryptCode(newPin);
+
+        if (encOld != currentSession.pinCode) return 1;
+        if (encNew == currentSession.pinCode) return 2;
+
+        currentSession.pinCode = encNew;
+        
+        for (int i = 68; i <= 90; i++) {
+            string s = string(1, (char)i) + ":\\" + PINFILE;
+            fstream file(s, ios::in); 
+            if (file.is_open()) {
+                file.close();
+                ofstream outFile(s, ios::trunc); 
+                outFile << encNew;
+                outFile.close();
+                break;
+            }
+        }
+
+        db->updateAccount(currentSession);
+        return 0;
+    }
 };
 
 int main(int argc, char const *argv[])
 {
-
+    // 1. Boot up the backend
     BankDatabase db = BankDatabase();
     db.loadFromFile();
-    db.debugPrintAll();
-    db.saveToFile();
+    
+    // Pass the memory address of our loaded db to the ATM
+    ATM atm(&db); 
+
+    // ==========================================
+    // CHANGE THIS FLAG BEFORE COMPILING TO TEST
+    // 1 = DB Check, 2 = Register, 3 = Auth/Balance, 
+    // 4 = Deposit/Withdraw, 5 = Transfer
+    // ==========================================
+    int TEST_MODE = 5;
+
+    switch (TEST_MODE) {
+        case 1: {
+            cout << "\n[TEST 1] --- Initial DB Load ---\n";
+            db.debugPrintAll();
+            break;
+        }
+        case 2: {
+            cout << "\n[TEST 2] --- Registration & USB Creation ---\n";
+            Account newAcc;
+            newAcc.accountNumber = 88888;
+            newAcc.pinCode = 1234; // This should get encrypted inside registerAccount!
+            strcpy(newAcc.accountName, "Test User");
+            newAcc.depositBalance = 5000.0f;
+            newAcc.isSavings = false;
+            
+            // HARDCODE YOUR ACTUAL FLASH DRIVE LETTER HERE
+            char usbDrive = 'K'; 
+            
+            int status = atm.registerAccount(newAcc, usbDrive);
+            cout << "Registration Status (0=Success): " << status << "\n";
+            
+            cout << "\n[Post-Test DB State]:\n";
+            db.debugPrintAll();
+            break;
+        }
+        case 3: {
+            cout << "\n[TEST 3] --- Login & Balance Check ---\n";
+            // Make sure your USB is plugged in for this to work!
+            bool success = atm.authenticateUser(88888, 1234);
+            
+            cout << "Login Successful: " << (success ? "TRUE" : "FALSE") << "\n";
+            if (success) {
+                cout << "Current Deposit Balance: PHP " << atm.checkBalance(false) << "\n";
+                atm.logout();
+            }
+            break;
+        }
+        case 4: {
+            cout << "\n[TEST 4] --- Deposit & Withdraw ---\n";
+            if (atm.authenticateUser(88888, 1234)) {
+                cout << "Pre-transaction Balance: PHP " << atm.checkBalance(false) << "\n";
+                
+                atm.deposit(1500.0f);
+                cout << "After 1500 Deposit: PHP " << atm.checkBalance(false) << "\n";
+                
+                bool wStatus = atm.withdraw(2000.0f, false);
+                cout << "Withdraw 2000 Status: " << (wStatus ? "SUCCESS" : "FAILED") << "\n";
+                cout << "Final Balance: PHP " << atm.checkBalance(false) << "\n";
+                
+                atm.logout();
+            } else {
+                cout << "Login failed. Check USB or credentials.\n";
+            }
+            break;
+        }
+        case 5: {
+            cout << "\n[TEST 5] --- Fund Transfer ---\n";
+            if (atm.authenticateUser(88888, 1234)) {
+                // Assuming account 12345 exists in your CSV
+                int tStatus = atm.fundTransfer(12345, 1000.0f);
+                cout << "Transfer 1000 to Acc 12345 Status: " << tStatus << "\n";
+                cout << "Sender Final Balance: PHP " << atm.checkBalance(false) << "\n";
+                
+                atm.logout();
+                
+                cout << "\n[Post-Test DB State (Check Receiver Balance)]:\n";
+                db.debugPrintAll();
+            }
+            break;
+        }
+        default:
+            cout << "Invalid TEST_MODE selected.\n";
+            break;
+    }
+
     return 0;
 }
