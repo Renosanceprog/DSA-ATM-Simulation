@@ -1,4 +1,4 @@
-☐ 1. Immediate Structural Fixes
+✔ 1. Immediate Structural Fixes @done (9/20/2026, 9:47:48 AM)
     ✔ Fix ATM Constructor: Change db = new BankDatabase(); to db = database; (prevents overwriting the loaded DB). @done (9/13/2026, 2:11:49 PM)
     ✔ Update Registration Signature: Change to int registerAccount(Account newAcc, char driveLetter) for USB targeting. @done (9/13/2026, 3:42:37 PM)
 
@@ -25,7 +25,7 @@
     ✔ Implement logout @done (9/13/2026, 3:54:32 PM)
         ✔ Reset currentSession to a blank Account and set sessionActive = false. @done (9/13/2026, 3:54:34 PM)
 
-☐ 5. Transaction Module (The Explicit Commit Pattern)
+✔ 5. Transaction Module (The Explicit Commit Pattern) @done (9/20/2026, 9:47:46 AM)
     ✔ Implement checkBalance: Check if (!sessionActive) return 0;. Return balance from currentSession. @done (9/13/2026, 4:38:16 PM)
     ✔ Implement deposit: Modify currentSession balance -> db->updateAccount(currentSession) -> db->saveToFile(). @done (9/13/2026, 4:38:28 PM)
     ✔ Implement withdraw: Verify funds -> Modify currentSession -> updateAccount() -> saveToFile(). @done (9/13/2026, 4:38:29 PM)

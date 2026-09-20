@@ -1,0 +1,27 @@
+☐ Task 1: Core Setup & Integration
+☐ Task 1.1: Merge his backend code with your UI/Graphics snippet in a single file (or include headers if splitting).
+✔ Task 1.2: Inside main(), replace his TEST_MODE block with initWindow(); and a while(true) loop representing the application's root lifecycle. @done (9/20/2026, 10:25:02 AM)
+✔ Task 1.3: Create a universal clearInnerScreen() helper function that loops through rows 4 to 28 and prints spaces to clear the workspace without redrawing the ATM border (preventing screen tearing). @done (9/20/2026, 10:25:03 AM)
+
+☐ Task 2: Input Handling & UX Rules
+☐ Task 2.1: Create a getStringInput(row, col, buffer, max_len) function. This function must read characters one-by-one using _getch(), echo them to the screen atomically, and instantly return a specific failure code if KEY_ESC is pressed so the active transaction can abort.
+☐ Task 2.2: Create a getSecureInput() variant of the above that prints * instead of the actual characters for PIN codes.
+☐ Task 2.3: Create an atomicPrintMsg(row, col, msg, color) function for displaying success/error states immediately without clearing the screen.
+
+☐ Task 3: The Main Menu State (Unauthenticated)
+☐ Task 3.1: Create runMainMenu(). Use runInteractiveMenu to display: [ "Login", "Register Account", "Quit" ].
+☐ Task 3.2: Implement Registration Flow. Ask for Name, Bday, Contact, PIN, and Drive Letter one by one. If the user presses ESC on any step, return to Main Menu. Evaluate the return code (0, 1, 2, 3) from atm.registerAccount() and print the specific error (e.g., "Drive Invalid" or "Account Exists") without wiping their typed data.
+☐ Task 3.3: Implement Login Flow. Ask for Account Number and PIN. If atm.authenticateUser() returns false, play SFX_MENU_INVALID, print "Invalid Credentials or Missing USB", and let them press Enter to try again or ESC to back out.
+
+☐ Task 4: The Dashboard State (Authenticated)
+☐ Task 4.1: Create runDashboardMenu(). This is your stack. Wrap this menu in a while(true) loop that only breaks when the user selects "Logout".
+☐ Task 4.2: Add options to the Dashboard: [ "Balance Inquiry", "Withdraw", "Deposit", "Fund Transfer", "Change PIN", "Logout" ].
+☐ Task 4.3: Implement Balance Inquiry. Clear the inner screen, fetch atm.checkBalance(false) and atm.checkBalance(true), print them beautifully, and wait for KEY_ENTER to return to the Dashboard.
+
+☐ Task 5: Transaction Submenus (Atomic States)
+☐ Task 5.1: Implement Deposit / Withdraw. Prompt for an amount. For withdrawals, prompt to choose between Savings/Current. Use your ESC cancellation rule here if they change their mind.
+☐ Task 5.2: Implement Fund Transfer. Prompt for Receiver Account and Amount. Check the return code from atm.fundTransfer():
+*   1: Print "Insufficient Balance"
+*   2: Print "Receiver Account Not Found"
+*   0: Play SFX_MENU_SUCCESS and print "Transfer Complete".
+☐ Task 5.3: Implement Change PIN. Prompt for Old PIN, New PIN, and Confirm New PIN. Handle error codes 1 (Mismatch) and 2 (Same as old PIN) cleanly.
