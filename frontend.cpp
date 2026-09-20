@@ -746,7 +746,16 @@ void runMainHub(ATM& atm)
     {
         clearInnerScreen();
         int choice = runInteractiveMenu(7, "MAIN DASHBOARD", hubMenu);
-        
+
+        if (choice != -1 && choice != 7 && !atm.isSessionValid()) {
+            playAudio(SFX_MENU_INVALID);
+            clearInnerScreen();
+            printCentered(12, "SECURITY ALERT", C_RED);
+            printCentered(14, "USB Drive Ejected! Session Terminated.", C_YELLOW);
+            printCentered(22, "[ Press ENTER to return to Main Menu ]", C_RESET);
+            while (getKeyPress() != KEY_ENTER);
+            return; // Kicks them completely out of the Hub
+        }
         switch (choice) {
             case 1: runCheckBalance(atm); break;
             case 2: runDeposit(atm); break;

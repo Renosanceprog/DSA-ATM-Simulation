@@ -195,6 +195,16 @@ private:
         return false;
     }
 
+    bool validateSession()
+    {
+        if (!sessionActive) return false;
+        
+        if (!detectUSBAndVerifyPin(currentSession.accountNumber, currentSession.pinCode)) {
+            logout();
+            return false;
+        }
+        return true;
+    }
 public:
     ATM(BankDatabase* database)
     {
@@ -202,6 +212,9 @@ public:
         currentSession = Account();
         sessionActive = false;
     }
+    // public session checker
+    bool isSessionValid() { return validateSession(); }
+
     // getter
     string getAccountName() { return currentSession.accountName; }
 
@@ -245,14 +258,14 @@ public:
     
     float checkBalance(bool checkSavings)
     {
-        if (!sessionActive) return 0.0f;
+        if (!validateSession()) return 0.0f;
         if (checkSavings) return currentSession.savingsBalance;
         return currentSession.depositBalance;
     }
     
     bool deposit(float amount)
     {
-        if (!sessionActive) return false;
+        if (!validateSession()) return false;
         currentSession.depositBalance += amount;
         db->updateAccount(currentSession);
         return true;
@@ -260,7 +273,7 @@ public:
     
     bool withdraw(float amount, bool fromSavings)
     {
-        if (!sessionActive) return false;
+        if (!validateSession()) return false;
 
         float *balance = (fromSavings) ? &currentSession.savingsBalance : &currentSession.depositBalance;
         if (!(amount > *balance))
@@ -272,7 +285,7 @@ public:
         return false;
     }
     bool savingsTransfer(float amount, bool fromSavings){
-        if (!sessionActive) return false;
+        if (!validateSession()) return false;
 
         float *source = (fromSavings) ? &currentSession.savingsBalance : &currentSession.depositBalance;
         float *dest = (!fromSavings) ? &currentSession.savingsBalance : &currentSession.depositBalance;
@@ -286,7 +299,7 @@ public:
         return false;
     }
     int fundTransfer(int receiverAccNum, float amount){ // 0 = success, -1 = no session running, 1 = insufficient balance, 2 = receiver account does not exist
-        if (!sessionActive) return -1;
+        if (!validateSession()) return -1;
         if (amount > currentSession.depositBalance) return 1;
 
         Account receiver;
@@ -300,8 +313,10 @@ public:
         return 0;
     }
     
-int changePin(int oldPin, int newPin) // 0 = success, 1 = entered old pin does not match current pin, 2 = new pin is same as old pin
+    int changePin(int oldPin, int newPin) // 0 = success, 1 = entered old pin does not match current pin, 2 = new pin is same as old pin
     {
+        if (!validateSession()) return -1;
+
         int encOld = encryptCode(oldPin);
         int encNew = encryptCode(newPin);
 
