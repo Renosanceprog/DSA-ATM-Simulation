@@ -390,7 +390,7 @@ void runWithdraw(ATM& atm)
             isProceed = true;
             clearInnerScreen();
             char buffer[100];
-            snprintf(buffer, sizeof(buffer), "Current Balance: PHP %.2f", atm.checkBalance(false));
+            snprintf(buffer, sizeof(buffer), "Current Balance: PHP %.2f", curBal);
             printCentered(10, buffer, C_GREEN);
             printCentered(8, "--- WITHDRAW FROM " + (isSavings ? string("SAVINGS") : string("DEPOSIT")) + " ---", C_CYAN);
             printCentered(25, "[ Press ESC to cancel ]", C_YELLOW);
@@ -478,7 +478,7 @@ void runSavingsTransfer(ATM& atm)
             isProceed = true;
             clearInnerScreen();
             char buffer[100];
-            snprintf(buffer, sizeof(buffer), "Current Balance: PHP %.2f", atm.checkBalance(fromSavings));
+            snprintf(buffer, sizeof(buffer), "Current Balance: PHP %.2f", curBal);
             printCentered(10, buffer, C_GREEN);
             printCentered(8, "--- WITHDRAW FROM " + (fromSavings ? string("SAVINGS") : string("DEPOSIT")) + " ---", C_CYAN);
             printCentered(25, "[ Press ESC to cancel ]", C_YELLOW);
