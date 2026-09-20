@@ -3,6 +3,10 @@
 #include <vector>
 #include <conio.h>
 #include <windows.h>
+
+// LINK TO BACKEND (Make sure barebackend.cpp is in the same folder and has NO main() function!)
+#include "barebackend.cpp"
+
 using namespace std;
 
 /*========== TEXT COLORS & NAV ENUMS ==========*/
@@ -19,79 +23,12 @@ using namespace std;
 #define KEY_ENTER 13    
 #define KEY_ESC 27      
 
-/*========== DUMMY ATM CLASS FOR COMPILATION ==========*/
-// DELETE THIS ENTIRE BLOCK WHEN MERGING WITH THE BACKEND
-class ATM {
-public:
-    bool sessionActive = false;
-    void logout() { sessionActive = false; }
-    // Dummy backend methods
-    bool authenticateUser(int acc, int pin) { sessionActive = true; return true; }
-};
-/*======================================================*/
 /*========== INPUT WHITELISTS ==========*/
 const string VALID_NUMBERS = "0123456789";
 const string VALID_DECIMALS = "0123456789.";
 const string VALID_NAME = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ .-,";
-const string VALID_ALPHANUM = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ";
+const string VALID_DRIVE = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
-/*========== UNIVERSAL INPUT ENGINE ==========*/
-// Returns TRUE if the user pressed Enter (success), FALSE if they pressed ESC (cancel)
-bool getValidInput(int row, int col, string& buffer, int max_len, const string& valid_chars, bool obfuscated)
-{
-    buffer.clear();
-    
-    // Ensure the starting area is visually blanked out
-    cout << "\033[" << row << ";" << col << "H";
-    for (int i = 0; i < max_len; i++) cout << " ";
-    
-    while (true) 
-    {
-        // 1. Atomically draw the current buffer state
-        cout << "\033[" << row << ";" << col << "H";
-        for (size_t i = 0; i < buffer.length(); i++) {
-            cout << (obfuscated ? '*' : buffer[i]);
-        }
-        
-        // Print a trailing space to visually erase any leftover characters from a backspace, 
-        // then move the cursor back one step so the next character types in the right spot.
-        cout << " \b"; 
-
-        // 2. Wait for a keystroke
-        int ch = _getch();
-        
-        // Handle special multi-byte keys (like arrows) so they don't accidentally type characters
-        if (ch == 0 || ch == 224) {
-            _getch(); // Consume the second byte and ignore
-            continue;
-        }
-
-        // 3. Process the keystroke
-        if (ch == KEY_ESC) {
-            // Transaction cancelled!
-            return false; 
-        }
-        else if (ch == KEY_ENTER) {
-            // Only accept if they actually typed something
-            if (buffer.length() > 0) {
-                return true; 
-            }
-        }
-        else if (ch == 8) { // Backspace
-            if (!buffer.empty()) {
-                buffer.pop_back();
-                // Erase the last character on screen immediately
-                cout << "\033[" << row << ";" << col + buffer.length() << "H  ";
-            }
-        }
-        else {
-            // 4. Input Sanitation: Check if it's in our whitelist AND under the max length
-            if (buffer.length() < max_len && valid_chars.find((char)ch) != string::npos) {
-                buffer += (char)ch;
-            }
-        }
-    }
-}
 /*========== UI CORE FUNCTIONS ==========*/
 void initWindow()
 {
@@ -192,6 +129,101 @@ int runInteractiveMenu(int start_row, const string& title, const vector<string>&
     }
 }
 
+/*========== INPUT ENGINES ==========*/
+bool getValidInput(int row, int col, string& buffer, int max_len, const string& valid_chars, bool obfuscated)
+{
+    buffer.clear();
+    
+    // FIX: Prevent the input field from wrapping around and breaking the right border
+    if (max_len > 78 - col) max_len = 78 - col; 
+    
+    cout << "\033[" << row << ";" << col << "H";
+    for (int i = 0; i < max_len; i++) cout << " ";
+    
+    while (true) 
+    {
+        cout << "\033[" << row << ";" << col << "H";
+        for (size_t i = 0; i < buffer.length(); i++) cout << (obfuscated ? '*' : buffer[i]);
+        
+        // NEW: Draw a block caret so the user knows where they are typing
+        if (buffer.length() < max_len) {
+            cout << "\033[7m \033[0m\b"; // Inverted space (solid block), then backspace
+        } else {
+            cout << " \b"; // Clear leftover char if at max length
+        }
+
+        int ch = _getch();
+        if (ch == 0 || ch == 224) { _getch(); continue; }
+
+        if (ch == KEY_ESC) return false; 
+        else if (ch == KEY_ENTER) {
+            if (buffer.length() > 0) {
+                cout << " \b"; // Wipe the caret cleanly before returning
+                return true; 
+            }
+        }
+        else if (ch == 8) { 
+            if (!buffer.empty()) {
+                buffer.pop_back();
+                // Erase character and caret cleanly
+                cout << "\033[" << row << ";" << col + buffer.length() << "H   "; 
+            }
+        }
+        else {
+            if (buffer.length() < max_len && valid_chars.find((char)ch) != string::npos) {
+                buffer += (char)ch;
+            }
+        }
+    }
+}
+
+bool getDateInput(int row, int col, string& buffer)
+{
+    buffer.clear();
+    // Clear 10 spaces visually for DD/MM/YYYY
+    cout << "\033[" << row << ";" << col << "H          "; 
+    
+    while (true) 
+    {
+        cout << "\033[" << row << ";" << col << "H";
+        for (size_t i = 0; i < buffer.length(); i++) {
+            cout << buffer[i];
+            // Visually inject slashes after DD and MM
+            if (i == 1 || i == 3) cout << "/"; 
+        }
+        
+        // NEW: Draw a block caret for the date field
+        if (buffer.length() < 8) {
+            cout << "\033[7m \033[0m\b"; 
+        } else {
+            cout << " \b";
+        }
+
+        int ch = _getch();
+        if (ch == 0 || ch == 224) { _getch(); continue; }
+
+        if (ch == KEY_ESC) return false; 
+        else if (ch == KEY_ENTER) {
+            if (buffer.length() == 8) {
+                cout << " \b"; // Wipe caret before returning
+                return true; 
+            }
+        }
+        else if (ch == 8) { 
+            if (!buffer.empty()) {
+                buffer.pop_back();
+                // Wipes line to redraw slashes correctly
+                cout << "\033[" << row << ";" << col << "H          "; 
+            }
+        }
+        else {
+            if (buffer.length() < 8 && VALID_NUMBERS.find((char)ch) != string::npos) {
+                buffer += (char)ch;
+            }
+        }
+    }
+}
+
 /*========== HELPER: TODO SCREEN ==========*/
 void showTodoScreen(const string& title)
 {
@@ -212,14 +244,11 @@ void runCheckBalance(ATM& atm)
         int choice = runInteractiveMenu(10, "BALANCE INQUIRY", options);
         if (choice == 1) showTodoScreen("CHECK DEPOSIT BALANCE");
         else if (choice == 2) showTodoScreen("CHECK SAVINGS BALANCE");
-        else if (choice == -1) return; // ESC pops stack
+        else if (choice == -1) return; 
     }
 }
 
-void runDeposit(ATM& atm)
-{
-    showTodoScreen("DEPOSIT FUNDS");
-}
+void runDeposit(ATM& atm) { showTodoScreen("DEPOSIT FUNDS"); }
 
 void runWithdraw(ATM& atm)
 {
@@ -245,15 +274,8 @@ void runSavingsTransfer(ATM& atm)
     }
 }
 
-void runFundTransfer(ATM& atm)
-{
-    showTodoScreen("FUND TRANSFER");
-}
-
-void runChangePin(ATM& atm)
-{
-    showTodoScreen("CHANGE PIN");
-}
+void runFundTransfer(ATM& atm) { showTodoScreen("FUND TRANSFER"); }
+void runChangePin(ATM& atm) { showTodoScreen("CHANGE PIN"); }
 
 void runMainHub(ATM& atm)
 {
@@ -289,11 +311,7 @@ void runMainHub(ATM& atm)
 
 void runLogin(ATM& atm)
 {
-    // Temporarily routing straight to hub for skeleton testing.
-    // Replace with real input later.
     showTodoScreen("ACCOUNT LOGIN FLOW");
-    
-    // Simulate successful login
     if (atm.authenticateUser(0, 0)) {
         runMainHub(atm);
     }
@@ -301,7 +319,160 @@ void runLogin(ATM& atm)
 
 void runRegister(ATM& atm)
 {
-    showTodoScreen("ACCOUNT REGISTRATION FLOW");
+    clearInnerScreen();
+    printCentered(4, "--- OPEN NEW ACCOUNT ---", C_CYAN);
+    printCentered(25, "[ Press ESC at any time to cancel ]", C_YELLOW);
+
+    cout << "\033[8;15H"  << "Account Number (5 digits) : ";
+    cout << "\033[10;15H" << "Account Name              : ";
+    cout << "\033[12;15H" << "Birthday (DD/MM/YYYY)     : ";
+    cout << "\033[14;15H" << "Contact (11 digits)       : ";
+    cout << "\033[16;15H" << "Initial Deposit       PHP : ";
+    cout << "\033[18;15H" << "Create 4-Digit PIN        : ";
+    cout << "\033[20;15H" << "Confirm 4-Digit PIN       : ";
+    cout << "\033[22;15H" << "Insert USB & Enter Letter : ";
+
+    auto printError = [](const string& msg) {
+        cout << "\033[27;2H"; 
+        for(int i=0; i<76; i++) cout << " "; 
+        printCentered(27, msg, C_RED);
+    };
+    auto clearError = []() {
+        cout << "\033[27;2H";
+        for(int i=0; i<76; i++) cout << " "; 
+    };
+
+    string accStr, nameStr, bdayStr, contactStr, depStr, pinStr, confPinStr, driveStr;
+    int step = 0;
+
+    while (step >= 0 && step <= 9) 
+    {
+        switch (step) 
+        {
+            case 0: // Account Number
+                if (!getValidInput(8, 43, accStr, 5, VALID_NUMBERS, false)) return;
+                
+                if (accStr.length() == 5 && stoi(accStr) > 0) { 
+                    step++; clearError(); 
+                } else { 
+                    printError("Account Number must be exactly 5 digits."); 
+                }
+                break;
+
+            case 1: // Account Name
+                if (!getValidInput(10, 43, nameStr, 50, VALID_NAME, false)) return;
+                
+                if (nameStr.length() > 2) { 
+                    step++; clearError(); 
+                } else { 
+                    printError("Name is too short."); 
+                }
+                break;
+
+            case 2: // Birthday (Uses the new Date Input Engine)
+                if (!getDateInput(12, 43, bdayStr)) return;
+                
+                step++; clearError(); 
+                break;
+
+            case 3: // Contact
+                if (!getValidInput(14, 43, contactStr, 11, VALID_NUMBERS, false)) return;
+                
+                if (contactStr.length() == 11) { 
+                    step++; clearError(); 
+                } else { 
+                    printError("Contact must be exactly 11 digits (e.g. 09...)"); 
+                }
+                break;
+
+            case 4: // Initial Deposit
+                if (!getValidInput(16, 43, depStr, 10, VALID_DECIMALS, false)) return;
+                
+                if (depStr.length() > 0 && stof(depStr) >= 5000.0f) { 
+                    step++; clearError(); 
+                } else { 
+                    printError("Minimum initial deposit is PHP 5000."); 
+                }
+                break;
+
+            case 5: // Create PIN
+                if (!getValidInput(18, 43, pinStr, 4, VALID_NUMBERS, true)) return;
+                
+                if (pinStr.length() == 4) { 
+                    step++; clearError(); 
+                } else { 
+                    printError("PIN must be exactly 4 digits."); 
+                }
+                break;
+
+            case 6: // Confirm PIN
+                if (!getValidInput(20, 43, confPinStr, 4, VALID_NUMBERS, true)) return;
+                
+                if (pinStr == confPinStr) { 
+                    step++; clearError(); 
+                } else { 
+                    printError("PINs do not match! Try again.");
+                    confPinStr.clear();
+                    cout << "\033[20;43H    "; 
+                }
+                break;
+            case 7: // USB Drive Letter
+                if (!getValidInput(22, 43, driveStr, 1, VALID_DRIVE, false)) return;
+                
+                if (driveStr.length() == 1) { 
+                    driveStr[0] = toupper(driveStr[0]); // Force uppercase
+                    cout << "\033[22;43H" << driveStr[0]; // Visually update to uppercase
+                    step++; clearError(); 
+                } else { 
+                    printError("Enter a valid drive letter (e.g. D, E, F)"); 
+                }
+                break;
+
+            case 8: // Submitting to Backend
+            {
+                printCentered(27, " Processing transaction... please wait. ", C_YELLOW);
+
+                Account newAcc;
+                newAcc.accountNumber = stoi(accStr);
+                newAcc.depositBalance = stof(depStr);
+                newAcc.pinCode = stoi(pinStr);
+                newAcc.isSavings = false;
+                newAcc.savingsBalance = 0.0f;
+                
+                strncpy(newAcc.accountName, nameStr.c_str(), sizeof(newAcc.accountName) - 1);
+                strncpy(newAcc.contact, contactStr.c_str(), sizeof(newAcc.contact) - 1);
+
+                // Convert 8-digit buffer into standard DD/MM/YYYY format for the struct
+                string formattedBday = bdayStr.substr(0,2) + "/" + bdayStr.substr(2,2) + "/" + bdayStr.substr(4,4);
+                strncpy(newAcc.birthday, formattedBday.c_str(), sizeof(newAcc.birthday) - 1);
+
+                // Call the actual ATM backend method
+                int status = atm.registerAccount(newAcc, driveStr[0]);
+
+                if (status == 0) {
+                    clearInnerScreen();
+                    printCentered(14, "Account Created Successfully!", C_GREEN);
+                    printCentered(16, "Please keep your USB drive safe.", C_RESET);
+                    printCentered(25, "[ Press Enter to return to Menu ]", C_YELLOW);
+                    while (getKeyPress() != KEY_ENTER);
+                    return; 
+                } 
+                else if (status == 1) {
+                    printError("USB already contains an account! Use a different USB.");
+                    step = 7; 
+                } 
+                else if (status == 2) {
+                    printError("Invalid USB Drive! Is it plugged in?");
+                    step = 7; 
+                } 
+                else if (status == 3) {
+                    printError("Account Number already taken! Choose a different one.");
+                    step = 0; 
+                }
+                break;
+            }
+        }
+    }
 }
 
 void runMainMenu(ATM& atm)
@@ -336,7 +507,11 @@ int main()
     initWindow();
     drawBorder(C_BLUE);
 
-    ATM atm; // Initialize the state machine
+    // Boot up the database and link it to the ATM
+    BankDatabase db = BankDatabase();
+    db.loadFromFile();
+    ATM atm(&db); 
+
     runMainMenu(atm); // Enter the root menu
 
     cout << C_RESET << "\033[31;1H"; 
