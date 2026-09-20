@@ -1050,12 +1050,42 @@ void runMainMenu(ATM& atm)
         "Quit Application"
     };
 
+    // The Bank Logo (Notice the \" to safely print double quotes)
+    vector<string> logo = {
+        "888888b.   888b    888 8888888b.  ",
+        "888  \"88b  8888b   888 888   Y88b ",
+        "888  .88P  88888b  888 888    888 ",
+        "8888888K.  888Y88b 888 888   d88P ",
+        "888  \"Y88b 888 Y88b888 8888888P\"  ",
+        "888    888 888  Y88888 888 T88b   ",
+        "888   d88P 888   Y8888 888  T88b  ",
+        "8888888P\"  888    Y888 888   T88b "
+    };
+
+    // True Color RGB escape codes (R;G;B) for a Green to Dark Green gradient
+    vector<string> gradient = {
+        "\033[38;2;0;255;0m",  // Brightest Green
+        "\033[38;2;0;225;0m",
+        "\033[38;2;0;195;0m",
+        "\033[38;2;0;165;0m",
+        "\033[38;2;0;135;0m",
+        "\033[38;2;0;105;0m",
+        "\033[38;2;0;75;0m",   
+        "\033[38;2;0;45;0m"    // Darkest Green
+    };
+
     while (true) 
     {
         clearInnerScreen();
-        printCentered(4, "WELCOME TO THE BANK OF R", C_GREEN);
         
-        int choice = runInteractiveMenu(10, "MAIN MENU", mainMenu);
+        // Print the logo line-by-line starting at row 3
+        for (size_t i = 0; i < logo.size(); i++) {
+            // Apply the corresponding gradient color for each line
+            printCentered(3 + i, logo[i], gradient[i]); 
+        }
+        
+        // Run the menu starting at row 14, below the logo
+        int choice = runInteractiveMenu(14, "WELCOME TO THE BANK OF R", mainMenu);
         
         if (choice == 1) runLogin(atm);
         else if (choice == 2) runRegister(atm);
@@ -1072,7 +1102,7 @@ void runMainMenu(ATM& atm)
 int main()
 {
     initWindow();
-    drawBorder(C_BLUE);
+    drawBorder(C_GREEN);
 
     // Boot up the database and link it to the ATM
     BankDatabase db = BankDatabase();
