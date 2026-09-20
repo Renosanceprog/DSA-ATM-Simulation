@@ -173,18 +173,23 @@ private:
 
     int encryptCode(int pin){return pin ^ KEYVALUE ^ (KEYVALUE/2) ^ (KEYVALUE*13);}
     
-    bool detectUSBAndVerifyPin(int expectedPin)
+    bool detectUSBAndVerifyPin(int expectedAccNo, int expectedPin)
     {
-        string codeStr;
-        int codeInt;
+        string accStr, pinStr;
+        int accInt, pinInt;
+        
         for (int i = 68; i <= 90; i++) {
             string s = string(1, (char)i) + ":\\pin.code";
             ifstream file(s);
             if (file.is_open())
             {
-                getline(file, codeStr);
-                codeInt = stoi(codeStr);
-                if (codeInt == expectedPin) return true;
+                if (getline(file, accStr) && getline(file, pinStr)) 
+                {
+                    accInt = stoi(accStr);
+                    pinInt = stoi(pinStr);
+                    
+                    if (accInt == expectedAccNo && pinInt == expectedPin) return true;
+                }
             }
         }
         return false;
@@ -218,7 +223,7 @@ public:
             return 3;
         }
         
-        file2<<newAcc.pinCode;
+        file2 << newAcc.accountNumber << "\n" << newAcc.pinCode;
         db->saveToFile();
         return 0;
     };
@@ -227,7 +232,8 @@ public:
     {
         int pinInt = encryptCode(inputPin);
         db->getAccount(accountNumber, currentSession);
-        if (pinInt == currentSession.pinCode && detectUSBAndVerifyPin(pinInt))
+        
+        if (pinInt == currentSession.pinCode && detectUSBAndVerifyPin(accountNumber, pinInt))
         {
             sessionActive = true;
             return true;
@@ -310,7 +316,7 @@ int changePin(int oldPin, int newPin) // 0 = success, 1 = entered old pin does n
             if (file.is_open()) {
                 file.close();
                 ofstream outFile(s, ios::trunc); 
-                outFile << encNew;
+                outFile << currentSession.accountNumber << "\n" << encNew;
                 outFile.close();
                 break;
             }
