@@ -4,6 +4,7 @@
 #include <conio.h>
 #include <windows.h>
 
+// LINK TO BACKEND (Make sure barebackend.cpp is in the same folder and has NO main() function!)
 #include "barebackend.cpp"
 
 using namespace std;
@@ -168,6 +169,7 @@ bool getValidInput(int row, int col, string& buffer, int max_len, const string& 
 {
     buffer.clear();
     
+    // FIX: Prevent the input field from wrapping around and breaking the right border
     if (max_len > 78 - col) max_len = 78 - col; 
     
     cout << "\033[" << row << ";" << col << "H";
@@ -178,10 +180,11 @@ bool getValidInput(int row, int col, string& buffer, int max_len, const string& 
         cout << "\033[" << row << ";" << col << "H";
         for (size_t i = 0; i < buffer.length(); i++) cout << (obfuscated ? '*' : buffer[i]);
         
+        // NEW: Draw a block caret so the user knows where they are typing
         if (buffer.length() < max_len) {
-            cout << "\033[7m \033[0m\b";
+            cout << "\033[7m \033[0m\b"; // Inverted space (solid block), then backspace
         } else {
-            cout << " \b";
+            cout << " \b"; // Clear leftover char if at max length
         }
 
         int ch = _getch();
@@ -190,13 +193,14 @@ bool getValidInput(int row, int col, string& buffer, int max_len, const string& 
         if (ch == KEY_ESC) return false; 
         else if (ch == KEY_ENTER) {
             if (buffer.length() > 0) {
-                cout << " \b";
+                cout << " \b"; // Wipe the caret cleanly before returning
                 return true; 
             }
         }
         else if (ch == 8) { 
             if (!buffer.empty()) {
                 buffer.pop_back();
+                // Erase character and caret cleanly
                 cout << "\033[" << row << ";" << col + buffer.length() << "H   ";
                 playAudio(SFX_MENU_KEY_TYPING);
             }
@@ -215,6 +219,7 @@ bool getValidInput(int row, int col, string& buffer, int max_len, const string& 
 bool getDateInput(int row, int col, string& buffer)
 {
     buffer.clear();
+    // Clear 10 spaces visually for DD/MM/YYYY
     cout << "\033[" << row << ";" << col << "H          "; 
     
     while (true) 
@@ -222,9 +227,11 @@ bool getDateInput(int row, int col, string& buffer)
         cout << "\033[" << row << ";" << col << "H";
         for (size_t i = 0; i < buffer.length(); i++) {
             cout << buffer[i];
+            // Visually inject slashes after DD and MM
             if (i == 1 || i == 3) cout << "/"; 
         }
         
+        // NEW: Draw a block caret for the date field
         if (buffer.length() < 8) {
             cout << "\033[7m \033[0m\b"; 
         } else {
@@ -237,13 +244,14 @@ bool getDateInput(int row, int col, string& buffer)
         if (ch == KEY_ESC) return false; 
         else if (ch == KEY_ENTER) {
             if (buffer.length() == 8) {
-                cout << " \b";
+                cout << " \b"; // Wipe caret before returning
                 return true; 
             }
         }
         else if (ch == 8) { 
             if (!buffer.empty()) {
                 buffer.pop_back();
+                // Wipes line to redraw slashes correctly
                 cout << "\033[" << row << ";" << col << "H          "; 
                 playAudio(SFX_MENU_KEY_TYPING);
             }
@@ -270,7 +278,7 @@ void runCheckBalance(ATM& atm)
         clearInnerScreen();
         int choice = runInteractiveMenu(10, "BALANCE INQUIRY", options);
         
-        if (choice == -1) return;
+        if (choice == -1) return; // User pressed ESC, go back to Dashboard
         
         clearInnerScreen();
         printCentered(10, "--- ACCOUNT BALANCE ---", C_CYAN);
@@ -311,12 +319,13 @@ void runDeposit(ATM& atm)
 
     while (true) 
     {
+        // Ask for the deposit amount (Max 10 characters, Decimal numbers only)
         if (!getValidInput(14, 38, amountStr, 10, VALID_DECIMALS, false)) return;
         
         if (amountStr.length() > 0) {
             float amount = stof(amountStr);
             
-            if (amount >= 100.0f) {
+            if (amount >= 100.0f) { // Example sanity check: Minimum 100 PHP deposit
                 clearError();
                 printCentered(18, " Processing deposit... please wait. ", C_YELLOW);
                 
@@ -364,7 +373,7 @@ void runWithdraw(ATM& atm)
         clearInnerScreen();
         int choice = runInteractiveMenu(10, "WITHDRAW FUNDS", options);
         
-        if (choice == -1) return;
+        if (choice == -1) return; // User pressed ESC, go back to Dashboard
         
         bool isSavings = (choice == 2);
         float curBal = isSavings ? atm.checkBalance(true) : atm.checkBalance(false);
@@ -392,11 +401,12 @@ void runWithdraw(ATM& atm)
         string amountStr;
         while (isProceed) 
         {
+            // If they press ESC here, it breaks this inner loop and takes them back to the Deposit/Savings choice menu
             if (!getValidInput(14, 38, amountStr, 10, VALID_DECIMALS, false)) break; 
             
             if (amountStr.length() > 0) {
                 float amount = stof(amountStr);
-                if (amount >= 100.0f) {
+                if (amount >= 100.0f) { // Real ATMs usually dispense a minimum of 100
                     clearError();
                     printCentered(18, " Processing withdrawal... please wait. ", C_YELLOW);
                     
@@ -413,6 +423,7 @@ void runWithdraw(ATM& atm)
                         while (getKeyPress() != KEY_ENTER);
                         return; // Pop all the way back to main hub
                     } else {
+                        // Erase the processing text
                         cout << "\033[18;2H"; 
                         for(int i=0; i<76; i++) cout << " "; 
                         
@@ -501,6 +512,7 @@ void runSavingsTransfer(ATM& atm)
                         while (getKeyPress() != KEY_ENTER);
                         return;
                     } else {
+                        // Erase processing text
                         cout << "\033[18;2H"; 
                         for(int i=0; i<76; i++) cout << " "; 
                         
@@ -528,7 +540,7 @@ void runFundTransfer(ATM& atm)
         for(int i = 0; i < 76; i++) cout << " "; 
     };
 
-    float curBal = atm.checkBalance(false);
+    float curBal = atm.checkBalance(false); // Fund transfers happen from the Deposit account
 
     if (curBal == 0) {
         clearInnerScreen();
@@ -598,14 +610,15 @@ void runFundTransfer(ATM& atm)
                     return;
                 }
                 else if (status == 1) {
+                    // Erase processing text
                     cout << "\033[20;2H"; for(int i=0; i<76; i++) cout << " ";
                     printError("Transfer Failed: Insufficient Balance.");
-                    step = 1;
+                    step = 1; // Jump back to Amount field
                 }
                 else if (status == 2) {
                     cout << "\033[20;2H"; for(int i=0; i<76; i++) cout << " ";
                     printError("Transfer Failed: Receiver Account does not exist.");
-                    step = 0;
+                    step = 0; // Jump back to Account field
                 }
                 else {
                     cout << "\033[20;2H"; for(int i=0; i<76; i++) cout << " ";
@@ -671,7 +684,7 @@ void runChangePin(ATM& atm)
                 } else {
                     printError("New PINs do not match! Please try again.");
                     confPinStr.clear();
-                    cout << "\033[16;48H    ";
+                    cout << "\033[16;48H    "; // Visually erase just the confirm box
                 }
                 break;
 
@@ -696,6 +709,7 @@ void runChangePin(ATM& atm)
                     cout << "\033[20;2H"; for(int i=0; i<76; i++) cout << " ";
                     printError("Error: The Current PIN you entered is incorrect.");
                     
+                    // Wipe the current PIN box and kick them to step 0
                     oldPinStr.clear();
                     cout << "\033[12;48H    ";
                     step = 0; 
@@ -704,6 +718,7 @@ void runChangePin(ATM& atm)
                     cout << "\033[20;2H"; for(int i=0; i<76; i++) cout << " ";
                     printError("Error: New PIN cannot be the same as your Current PIN.");
                     
+                    // Wipe the new and confirm PIN boxes and kick them to step 1
                     newPinStr.clear();
                     confPinStr.clear();
                     cout << "\033[14;48H    ";
@@ -739,7 +754,7 @@ void runMainHub(ATM& atm)
             printCentered(14, "USB Drive Ejected! Session Terminated.", C_YELLOW);
             printCentered(22, "[ Press ENTER to return to Main Menu ]", C_RESET);
             while (getKeyPress() != KEY_ENTER);
-            return;
+            return; // Kicks them completely out of the Hub
         }
         switch (choice) {
             case 1: runCheckBalance(atm); break;
@@ -751,7 +766,7 @@ void runMainHub(ATM& atm)
             case 7: 
             case -1: // Logout or ESC
                 atm.logout();
-                return;
+                return; // Pops stack back to main menu
         }
     }
 }
@@ -930,7 +945,7 @@ void runRegister(ATM& atm)
                 }
                 break;
 
-            case 2: // Birthday 
+            case 2: // Birthday (Uses the new Date Input Engine)
                 if (!getDateInput(12, 43, bdayStr)) return;
                 
                 step++; clearError(); 
@@ -981,8 +996,8 @@ void runRegister(ATM& atm)
                 if (!getValidInput(22, 43, driveStr, 1, VALID_DRIVE, false)) return;
                 
                 if (driveStr.length() == 1) { 
-                    driveStr[0] = toupper(driveStr[0]);
-                    cout << "\033[22;43H" << driveStr[0];
+                    driveStr[0] = toupper(driveStr[0]); // Force uppercase
+                    cout << "\033[22;43H" << driveStr[0]; // Visually update to uppercase
                     step++; clearError(); 
                 } else { 
                     printError("Enter a valid drive letter (e.g. D, E, F)"); 
@@ -1049,6 +1064,7 @@ void runMainMenu(ATM& atm)
         "Quit Application"
     };
 
+    // The Bank Logo (Notice the \" to safely print double quotes)
     vector<string> logo = {
         "888888b.   888b    888 8888888b.  ",
         "888  \"88b  8888b   888 888   Y88b ",
@@ -1060,25 +1076,29 @@ void runMainMenu(ATM& atm)
         "8888888P\"  888    Y888 888   T88b "
     };
 
+    // True Color RGB escape codes (R;G;B) for a Green to Dark Green gradient
     vector<string> gradient = {
-        "\033[38;2;0;255;0m",
+        "\033[38;2;0;255;0m",  // Brightest Green
         "\033[38;2;0;225;0m",
         "\033[38;2;0;195;0m",
         "\033[38;2;0;165;0m",
         "\033[38;2;0;135;0m",
         "\033[38;2;0;105;0m",
         "\033[38;2;0;75;0m",   
-        "\033[38;2;0;45;0m"
+        "\033[38;2;0;45;0m"    // Darkest Green
     };
 
     while (true) 
     {
         clearInnerScreen();
         
+        // Print the logo line-by-line starting at row 3
         for (size_t i = 0; i < logo.size(); i++) {
+            // Apply the corresponding gradient color for each line
             printCentered(3 + i, logo[i], gradient[i]); 
         }
         
+        // Run the menu starting at row 14, below the logo
         int choice = runInteractiveMenu(14, "WELCOME TO THE BANK OF R", mainMenu);
         
         if (choice == 1) runLogin(atm);
@@ -1098,11 +1118,12 @@ int main()
     initWindow();
     drawBorder(C_GREEN);
 
+    // Boot up the database and link it to the ATM
     BankDatabase db = BankDatabase();
     db.loadFromFile();
     ATM atm(&db); 
 
-    runMainMenu(atm);
+    runMainMenu(atm); // Enter the root menu
 
     cout << C_RESET << "\033[31;1H"; 
     return 0;
