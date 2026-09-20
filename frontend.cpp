@@ -995,7 +995,7 @@ void runRegister(ATM& atm)
                 }
                 break;
 
-            case 8: // Submitting to Backend
+        case 8: // Submitting to Backend
             {
                 printCentered(27, " Processing transaction... please wait. ", C_YELLOW);
 
@@ -1006,12 +1006,17 @@ void runRegister(ATM& atm)
                 newAcc.isSavings = false;
                 newAcc.savingsBalance = 0.0f;
                 
+                // Copy strings and FORCE the null-terminator at the very end of the array
                 strncpy(newAcc.accountName, nameStr.c_str(), sizeof(newAcc.accountName) - 1);
+                newAcc.accountName[sizeof(newAcc.accountName) - 1] = '\0';
+
                 strncpy(newAcc.contact, contactStr.c_str(), sizeof(newAcc.contact) - 1);
+                newAcc.contact[sizeof(newAcc.contact) - 1] = '\0';
 
                 // Convert 8-digit buffer into standard DD/MM/YYYY format for the struct
                 string formattedBday = bdayStr.substr(0,2) + "/" + bdayStr.substr(2,2) + "/" + bdayStr.substr(4,4);
                 strncpy(newAcc.birthday, formattedBday.c_str(), sizeof(newAcc.birthday) - 1);
+                newAcc.birthday[sizeof(newAcc.birthday) - 1] = '\0';
 
                 // Call the actual ATM backend method
                 int status = atm.registerAccount(newAcc, driveStr[0]);
