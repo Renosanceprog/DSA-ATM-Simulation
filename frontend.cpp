@@ -239,16 +239,86 @@ void showTodoScreen(const string& title)
 void runCheckBalance(ATM& atm)
 {
     vector<string> options = {"Deposit Account", "Savings Account"};
-    while (true) {
+    
+    while (true) 
+    {
         clearInnerScreen();
         int choice = runInteractiveMenu(10, "BALANCE INQUIRY", options);
-        if (choice == 1) showTodoScreen("CHECK DEPOSIT BALANCE");
-        else if (choice == 2) showTodoScreen("CHECK SAVINGS BALANCE");
-        else if (choice == -1) return; 
+        
+        if (choice == -1) return; // User pressed ESC, go back to Dashboard
+        
+        clearInnerScreen();
+        printCentered(10, "--- ACCOUNT BALANCE ---", C_CYAN);
+        
+        char buffer[100];
+        if (choice == 1) {
+            snprintf(buffer, sizeof(buffer), "Current Deposit Balance: PHP %.2f", atm.checkBalance(false));
+            printCentered(14, buffer, C_GREEN);
+        } else if (choice == 2) {
+            snprintf(buffer, sizeof(buffer), "Current Savings Balance: PHP %.2f", atm.checkBalance(true));
+            printCentered(14, buffer, C_GREEN);
+        }
+        
+        printCentered(22, "[ Press ENTER to return to menu ]", C_YELLOW);
+        while (getKeyPress() != KEY_ENTER);
     }
 }
 
-void runDeposit(ATM& atm) { showTodoScreen("DEPOSIT FUNDS"); }
+void runDeposit(ATM& atm)
+{
+    clearInnerScreen();
+    printCentered(8, "--- DEPOSIT FUNDS ---", C_CYAN);
+    printCentered(25, "[ Press ESC to cancel ]", C_YELLOW);
+    
+    cout << "\033[14;20H" << "Enter Amount: PHP ";
+    
+    auto printError = [](const string& msg) {
+        cout << "\033[27;2H"; 
+        for(int i = 0; i < 76; i++) cout << " "; 
+        printCentered(27, msg, C_RED);
+    };
+    auto clearError = []() {
+        cout << "\033[27;2H";
+        for(int i = 0; i < 76; i++) cout << " "; 
+    };
+
+    string amountStr;
+
+    while (true) 
+    {
+        // Ask for the deposit amount (Max 10 characters, Decimal numbers only)
+        if (!getValidInput(14, 38, amountStr, 10, VALID_DECIMALS, false)) return;
+        
+        if (amountStr.length() > 0) {
+            float amount = stof(amountStr);
+            
+            if (amount >= 100.0f) { // Example sanity check: Minimum 100 PHP deposit
+                clearError();
+                printCentered(18, " Processing deposit... please wait. ", C_YELLOW);
+                
+                if (atm.deposit(amount)) {
+                    clearInnerScreen();
+                    printCentered(12, "Deposit Successful!", C_GREEN);
+                    
+                    char buffer[100];
+                    snprintf(buffer, sizeof(buffer), "New Deposit Balance: PHP %.2f", atm.checkBalance(false));
+                    printCentered(14, buffer, C_RESET);
+                    
+                    printCentered(22, "[ Press ENTER to return to Dashboard ]", C_YELLOW);
+                    while (getKeyPress() != KEY_ENTER);
+                    return; 
+                } else {
+                    printError("Transaction failed! Session may have expired.");
+                    return;
+                }
+            } else {
+                printError("Minimum deposit amount is PHP 100.");
+            }
+        } else {
+            printError("Please enter a valid amount.");
+        }
+    }
+}
 
 void runWithdraw(ATM& atm)
 {
