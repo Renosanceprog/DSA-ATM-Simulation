@@ -311,9 +311,115 @@ void runMainHub(ATM& atm)
 
 void runLogin(ATM& atm)
 {
-    showTodoScreen("ACCOUNT LOGIN FLOW");
-    if (atm.authenticateUser(0, 0)) {
-        runMainHub(atm);
+    // ==========================================
+    // PHASE 1: REAL-LIFE USB DETECTION
+    // ==========================================
+    while (true) {
+        clearInnerScreen();
+        printCentered(10, "--- ATM CARD DETECTION ---", C_CYAN);
+        
+        bool usbFound = false;
+        for (int i = 68; i <= 90; i++) { // ASCII 68 = 'D', 90 = 'Z'
+            string path = string(1, (char)i) + ":\\pin.code";
+            ifstream file(path);
+            if (file.is_open()) {
+                usbFound = true;
+                break;
+            }
+        }
+
+        if (!usbFound) {
+            printCentered(14, "Please insert your registered ATM USB Drive.", C_YELLOW);
+            printCentered(16, "[ Press ENTER to scan again | Press ESC to cancel ]", C_RESET);
+            
+            int key;
+            do { key = getKeyPress(); } while (key != KEY_ENTER && key != KEY_ESC);
+            
+            if (key == KEY_ESC) return; // User gave up, return to main menu
+            continue; // They pressed enter, loop back and check USBs again
+        }
+        
+        break; // USB found! Move to the actual login form.
+    }
+
+    // ==========================================
+    // PHASE 2: AUTHENTICATION FORM
+    // ==========================================
+    clearInnerScreen();
+    printCentered(6, "--- SECURE LOGIN ---", C_CYAN);
+    printCentered(25, "[ Press ESC to cancel at any time ]", C_YELLOW);
+
+    cout << "\033[10;20H" << "Account Number (5 digits) : ";
+    cout << "\033[12;20H" << "PIN Code (4 digits)       : ";
+
+    auto printError = [](const string& msg) {
+        cout << "\033[27;2H"; 
+        for(int i=0; i<76; i++) cout << " "; 
+        printCentered(27, msg, C_RED);
+    };
+    auto clearError = []() {
+        cout << "\033[27;2H";
+        for(int i=0; i<76; i++) cout << " "; 
+    };
+
+    string accStr, pinStr;
+    int step = 0;
+
+    while (step >= 0 && step <= 2) 
+    {
+        switch(step)
+        {
+            case 0: // Account Number
+                if (!getValidInput(10, 48, accStr, 5, VALID_NUMBERS, false)) return;
+                
+                if (accStr.length() == 5) {
+                    step++; clearError();
+                } else {
+                    printError("Account Number must be exactly 5 digits.");
+                }
+                break;
+
+            case 1: // PIN Code
+                if (!getValidInput(12, 48, pinStr, 4, VALID_NUMBERS, true)) return;
+                
+                if (pinStr.length() == 4) {
+                    step++; clearError();
+                } else {
+                    printError("PIN must be exactly 4 digits.");
+                }
+                break;
+                
+            case 2: // Submit to Backend
+            {
+                printCentered(16, " Authenticating... please wait. ", C_YELLOW);
+                
+                int accNum = stoi(accStr);
+                int pinNum = stoi(pinStr);
+
+                // Send the data to your backend
+                if (atm.authenticateUser(accNum, pinNum)) {
+                    // Login Success! Send them to the Main Hub.
+                    runMainHub(atm);
+                    return; // When they eventually click "Logout", this returns them to the Main Menu.
+                } else {
+                    // Login Failed!
+                    
+                    // Wipe the "Authenticating" text
+                    cout << "\033[16;2H"; 
+                    for(int i=0; i<76; i++) cout << " "; 
+                    
+                    printError("Login Failed: Invalid Account, PIN, or wrong USB.");
+                    
+                    // Visually clear ONLY the PIN box so they can try again quickly
+                    pinStr.clear();
+                    cout << "\033[12;48H    "; 
+                    
+                    // Kick them back to step 1 (PIN Input)
+                    step = 1; 
+                }
+                break;
+            }
+        }
     }
 }
 
