@@ -323,24 +323,175 @@ void runDeposit(ATM& atm)
 void runWithdraw(ATM& atm)
 {
     vector<string> options = {"From Deposit Account", "From Savings Account"};
-    while (true) {
+    bool isProceed = true;
+
+    auto printError = [](const string& msg) {
+        cout << "\033[27;2H"; 
+        for(int i = 0; i < 76; i++) cout << " "; 
+        printCentered(27, msg, C_RED);
+    };
+    auto clearError = []() {
+        cout << "\033[27;2H";
+        for(int i = 0; i < 76; i++) cout << " "; 
+    };
+
+    while (true) 
+    {
         clearInnerScreen();
         int choice = runInteractiveMenu(10, "WITHDRAW FUNDS", options);
-        if (choice == 1) showTodoScreen("WITHDRAW FROM DEPOSIT");
-        else if (choice == 2) showTodoScreen("WITHDRAW FROM SAVINGS");
-        else if (choice == -1) return; 
+        
+        if (choice == -1) return; // User pressed ESC, go back to Dashboard
+        
+        bool isSavings = (choice == 2);
+        float curBal = isSavings ? atm.checkBalance(true) : atm.checkBalance(false);
+        string accountName = isSavings ? "Savings" : "Deposit";
+
+        
+        if (curBal == 0) {
+            printError("Could not start Transaction, " + accountName +" has Zero Balance.");
+            printCentered(22, "[ Press ENTER to return to Dashboard ]", C_YELLOW);
+            while (getKeyPress() != KEY_ENTER);
+            isProceed = false;
+        }
+        else {
+            isProceed = true;
+            clearInnerScreen();
+            char buffer[100];
+            snprintf(buffer, sizeof(buffer), "Current Balance: PHP %.2f", atm.checkBalance(false));
+            printCentered(10, buffer, C_GREEN);
+            printCentered(8, "--- WITHDRAW FROM " + (isSavings ? string("SAVINGS") : string("DEPOSIT")) + " ---", C_CYAN);
+            printCentered(25, "[ Press ESC to cancel ]", C_YELLOW);
+            
+            cout << "\033[14;20H" << "Enter Amount: PHP ";
+        }
+
+        string amountStr;
+        while (isProceed) 
+        {
+            // If they press ESC here, it breaks this inner loop and takes them back to the Deposit/Savings choice menu
+            if (!getValidInput(14, 38, amountStr, 10, VALID_DECIMALS, false)) break; 
+            
+            if (amountStr.length() > 0) {
+                float amount = stof(amountStr);
+                if (amount >= 100.0f) { // Real ATMs usually dispense a minimum of 100
+                    clearError();
+                    printCentered(18, " Processing withdrawal... please wait. ", C_YELLOW);
+                    
+                    if (atm.withdraw(amount, isSavings)) {
+                        clearInnerScreen();
+                        printCentered(12, "Withdrawal Successful!", C_GREEN);
+                        printCentered(14, "Please take your cash.", C_RESET);
+                        
+                        char buffer[100];
+                        snprintf(buffer, sizeof(buffer), "New %s Balance: PHP %.2f", accountName.c_str(), atm.checkBalance(isSavings));
+                        printCentered(16, buffer, C_RESET);
+                        
+                        printCentered(22, "[ Press ENTER to return to Dashboard ]", C_YELLOW);
+                        while (getKeyPress() != KEY_ENTER);
+                        return; // Pop all the way back to main hub
+                    } else {
+                        // Erase the processing text
+                        cout << "\033[18;2H"; 
+                        for(int i=0; i<76; i++) cout << " "; 
+                        
+                        printError("Transaction Failed: Insufficient " + accountName + " Balance.");
+                    }
+                } else {
+                    printError("Minimum withdrawal amount is PHP 100.");
+                }
+            } else {
+                printError("Please enter a valid amount.");
+            }
+        }
     }
 }
 
 void runSavingsTransfer(ATM& atm)
 {
-    vector<string> options = {"To Savings Account", "From Savings Account"};
-    while (true) {
+    vector<string> options = {"Deposit to Savings", "Savings to Deposit"};
+    bool isProceed = true;
+
+    auto printError = [](const string& msg) {
+        cout << "\033[27;2H"; 
+        for(int i = 0; i < 76; i++) cout << " "; 
+        printCentered(27, msg, C_RED);
+    };
+    auto clearError = []() {
+        cout << "\033[27;2H";
+        for(int i = 0; i < 76; i++) cout << " "; 
+    };
+
+    while (true) 
+    {
         clearInnerScreen();
-        int choice = runInteractiveMenu(10, "SAVINGS TRANSFER", options);
-        if (choice == 1) showTodoScreen("TRANSFER TO SAVINGS");
-        else if (choice == 2) showTodoScreen("TRANSFER FROM SAVINGS");
-        else if (choice == -1) return;
+        int choice = runInteractiveMenu(10, "INTERNAL TRANSFER", options);
+        
+        if (choice == -1) return;
+        
+        // choice 1: Deposit->Savings (fromSavings = false)
+        // choice 2: Savings->Deposit (fromSavings = true)
+        bool fromSavings = (choice == 2);
+        float curBal = fromSavings ? atm.checkBalance(true) : atm.checkBalance(false);
+        string sourceName = fromSavings ? "Savings" : "Deposit";
+        string destName = fromSavings ? "Deposit" : "Savings";
+
+        if (curBal == 0) {
+            printError("Could not start Transaction, " + sourceName +" has Zero Balance.");
+            printCentered(22, "[ Press ENTER to return to Dashboard ]", C_YELLOW);
+            while (getKeyPress() != KEY_ENTER);
+            isProceed = false;
+        }
+        else {
+            isProceed = true;
+            clearInnerScreen();
+            char buffer[100];
+            snprintf(buffer, sizeof(buffer), "Current Balance: PHP %.2f", atm.checkBalance(false));
+            printCentered(10, buffer, C_GREEN);
+            printCentered(8, "--- WITHDRAW FROM " + (fromSavings ? string("SAVINGS") : string("DEPOSIT")) + " ---", C_CYAN);
+            printCentered(25, "[ Press ESC to cancel ]", C_YELLOW);
+            
+            cout << "\033[14;20H" << "Enter Amount: PHP ";
+        }
+
+        string amountStr;
+        while(isProceed) 
+        {
+            if (!getValidInput(14, 38, amountStr, 10, VALID_DECIMALS, false)) break;
+            
+            if (amountStr.length() > 0) {
+                float amount = stof(amountStr);
+                if (amount > 0) {
+                    clearError();
+                    printCentered(18, " Processing transfer... please wait. ", C_YELLOW);
+                    
+                    if (atm.savingsTransfer(amount, fromSavings)) {
+                        clearInnerScreen();
+                        printCentered(12, "Transfer Successful!", C_GREEN);
+                        
+                        char buf1[100], buf2[100];
+                        snprintf(buf1, sizeof(buf1), "New Deposit Balance: PHP %.2f", atm.checkBalance(false));
+                        snprintf(buf2, sizeof(buf2), "New Savings Balance: PHP %.2f", atm.checkBalance(true));
+                        
+                        printCentered(15, buf1, C_RESET);
+                        printCentered(16, buf2, C_RESET);
+                        
+                        printCentered(22, "[ Press ENTER to return to Dashboard ]", C_YELLOW);
+                        while (getKeyPress() != KEY_ENTER);
+                        return;
+                    } else {
+                        // Erase processing text
+                        cout << "\033[18;2H"; 
+                        for(int i=0; i<76; i++) cout << " "; 
+                        
+                        printError("Transfer Failed: Insufficient " + sourceName + " Balance.");
+                    }
+                } else {
+                    printError("Enter an amount greater than 0.");
+                }
+            } else {
+                printError("Please enter a valid amount.");
+            }
+        }
     }
 }
 
