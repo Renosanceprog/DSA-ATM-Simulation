@@ -1,283 +1,476 @@
 #include <iostream>
+#include <fstream>
 #include <string>
-#include <vector>
-#include <conio.h>
-#include <windows.h>
+#include <iomanip>
+#include <cstring>
 
 using namespace std;
+#define DBFILE ".\\savefile\\db.csv" //TEMPORARY SAVE LOCATION
+#define KEYVALUE 187211
+#define PINFILE "pin.code"
 
-/*========== TEXT COLORS & NAV ENUMS ==========*/
-#define C_RESET  "\033[0m"      
-#define C_GREEN  "\033[1;32m"   
-#define C_YELLOW "\033[1;33m"  
-#define C_CYAN   "\033[1;36m"   
-#define C_RED    "\033[1;31m"    
-#define C_BLUE   "\033[1;34m"   
-#define C_MAG    "\033[1;35m"    
-
-#define KEY_UP 72       
-#define KEY_DOWN 80     
-#define KEY_ENTER 13    
-#define KEY_ESC 27      
-
-/*========== DUMMY ATM CLASS FOR COMPILATION ==========*/
-// DELETE THIS ENTIRE BLOCK WHEN MERGING WITH THE BACKEND
-class ATM {
-public:
-    bool sessionActive = false;
-    void logout() { sessionActive = false; }
-    // Dummy backend methods
-    bool authenticateUser(int acc, int pin) { sessionActive = true; return true; }
+struct Account {
+    int accountNumber;
+    char accountName[51];
+    char birthday[11];
+    char contact[11];
+    float depositBalance;
+    bool isSavings;
+    float savingsBalance;
+    int pinCode;
+    Account()
+    {
+        accountNumber = 0;
+        depositBalance = 0.0f;
+        savingsBalance = 0.0f;
+        pinCode = 0;
+        isSavings = false;
+        
+        accountName[0] = '\0';
+        birthday[0] = '\0';
+        contact[0] = '\0';
+    }
 };
-/*======================================================*/
 
-/*========== UI CORE FUNCTIONS ==========*/
-void initWindow()
-{
-    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
-    DWORD dwMode = 0;
-    GetConsoleMode(hOut, &dwMode);
-    dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
-    SetConsoleMode(hOut, dwMode);
-
-    SMALL_RECT windowSize = {0, 0, 79, 29};
-    SetConsoleWindowInfo(hOut, TRUE, &windowSize);
-    COORD bufferSize = {80, 30};
-    SetConsoleScreenBufferSize(hOut, bufferSize);
-    
-    HWND consoleWindow = GetConsoleWindow();
-    SetWindowLong(consoleWindow, GWL_STYLE, GetWindowLong(consoleWindow, GWL_STYLE) & ~WS_MAXIMIZEBOX & ~WS_SIZEBOX);
-    
-    CONSOLE_CURSOR_INFO cursorInfo;
-    GetConsoleCursorInfo(hOut, &cursorInfo);
-    cursorInfo.bVisible = false;
-    SetConsoleCursorInfo(hOut, &cursorInfo);
-}
-
-void drawBorder(const string& color)
-{
-    cout << "\033[2J" << color << "\033[1;1H\xC9";
-    for (int i = 0; i < 78; i++) cout << "\xCD";
-    cout << "\xBB";
-    for (int i = 2; i < 30; i++) cout << "\033[" << i << ";1H\xBA\033[" << i << ";80H\xBA";
-    cout << "\033[30;1H\xC8";
-    for (int i = 0; i < 78; i++) cout << "\xCD";
-    cout << "\xBC" << C_RESET << "\033[2;3H";
-}
-
-void printCentered(int row, const string& text, const string& color)
-{
-    int col = (80 - text.length()) / 2;
-    if (col < 2) col = 2; 
-    cout << "\033[" << row << ";" << col << "H" << color << text << C_RESET;
-}
-
-void clearInnerScreen() 
-{
-    for (int i = 2; i < 29; i++) {
-        cout << "\033[" << i << ";2H";
-        for (int j = 0; j < 78; j++) cout << " ";
-    }
-}
-
-int getKeyPress() 
-{
-    int ch = _getch();
-    if (ch == 0 || ch == 224) return _getch();
-    return ch; 
-} 
-
-void printMenu(int start_row, const string& title, const vector<string>& options, int cursor_pos) 
-{
-    printCentered(start_row, title, C_YELLOW);
-    int max_len = 0;
-    for (const auto& opt : options) if (opt.length() > max_len) max_len = opt.length();
-    int block_start_col = ((80 - (max_len + 8)) / 2); 
-
-    for (size_t i = 0; i < options.size(); i++) 
+class BankDatabase {
+private:
+    struct Node
     {
-        cout << "\033[" << start_row + 2 + i << ";" << block_start_col << "H";
-        if (cursor_pos == i + 1) {
-            cout << C_CYAN << "  [ > ] " << options[i];
-            for(int p = 0; p < (max_len - options[i].length()); p++) cout << " "; 
-            cout << "  " << C_RESET;
-        } else {
-            cout << "        " << options[i];
-            for(int p = 0; p < (max_len - options[i].length()); p++) cout << " "; 
-            cout << "  ";
+        Account data;
+        Node* next;
+        Node(Account data){this->data = data; next = nullptr;}
+    };
+    Node* head;
+
+public:
+    BankDatabase()
+    {
+        head = nullptr;
+    }
+
+    // ADT List Operations
+    bool insertAccount(Account newAcc)
+    {
+        if (head == nullptr) head = new Node(newAcc);
+        else
+        {
+            Node *p = head;
+            while (p->next != nullptr && newAcc.accountNumber != p->data.accountNumber) p = p->next;
+            if (newAcc.accountNumber == p->data.accountNumber) return false;
+            p->next = new Node(newAcc);
+        }
+        return true;
+    }
+    bool getAccount(int accountNumber, Account &outAccount)
+    {
+        Node *p = head;
+        while (p != nullptr && p->data.accountNumber != accountNumber) p = p->next;
+        if (p == nullptr) return false;
+        else
+        {
+            outAccount = p->data;
+            return true;
         }
     }
-}
+    bool updateAccount(Account updatedAcc)
+    {
+        Node *p = head;
+        while (p != nullptr && p->data.accountNumber != updatedAcc.accountNumber) p = p->next;
+        if (p == nullptr) return false;
+        else
+        {
+            p->data = updatedAcc;
+            saveToFile();
+            return true;
+        }
+    }
+    
+    // File I/O
+    bool loadFromFile()
+    {
+        ifstream file(DBFILE);
 
-int runInteractiveMenu(int start_row, const string& title, const vector<string>& options) 
-{
-    int cursor_pos = 1; 
-    int num_options = options.size();
-    printMenu(start_row, title, options, cursor_pos); 
+        if (!file.is_open()) return false;
+        
+        string line;
+        string tmp;
+        
+        while (getline(file, line))
+        {
+            if (line.empty()) continue;
+            Account newNode;
+            stringstream s(line);
+            // Account Number
+            getline(s, tmp, ',');
+            newNode.accountNumber = stoi(tmp);
 
-    while (true) 
+            // Account Name
+            getline(s, tmp, ',');
+            strncpy(newNode.accountName, tmp.c_str(), sizeof(newNode.accountName));
+            newNode.accountName[sizeof(newNode.accountName)-1] = '\0';
+
+            // Birthday
+            getline(s, tmp, ',');
+            strncpy(newNode.birthday, tmp.c_str(), sizeof(newNode.birthday));
+            newNode.birthday[sizeof(newNode.birthday)-1] = '\0';
+
+            // Contact
+            getline(s, tmp, ',');
+            strncpy(newNode.contact, tmp.c_str(), sizeof(newNode.contact));
+            newNode.contact[sizeof(newNode.contact)-1] = '\0';
+
+            // Deposit Balance
+            getline(s, tmp, ',');
+            newNode.depositBalance = stof(tmp);
+
+            // Savings flag
+            getline(s, tmp, ',');
+            if (stoi(tmp) == 1) newNode.isSavings = true;
+            else newNode.isSavings = false;
+
+            // Savings Balance
+            getline(s, tmp, ',');
+            newNode.savingsBalance = stof(tmp);
+
+            // Pin Code
+            getline(s, tmp, ',');
+            newNode.pinCode = stoi(tmp);
+
+            insertAccount(newNode);
+        }
+        return true;
+    }
+    bool saveToFile()
+    {
+        ofstream file(DBFILE);
+
+        if (!file.is_open()) return false;
+
+        Node *p = head;
+        while (p != nullptr)
+        {
+            file<<p->data.accountNumber<<","
+            <<p->data.accountName<<","
+            <<p->data.birthday<<","
+            <<p->data.contact<<","
+            <<p->data.depositBalance<<","
+            <<p->data.isSavings<<","
+            <<p->data.savingsBalance<<","
+            <<p->data.pinCode<<"\n";
+            p = p->next;
+        }
+        file.close();
+        return true;
+    }
+
+//REMOVE THIS DEBUGGER METHODS WHEN WE ARE PASSING THIS TO RENE
+    void debugPrintAll()
+    {
+        if (head == nullptr) {
+            std::cout << "[DEBUG] Database is empty (Head is null).\n";
+            return;
+        }
+
+        std::cout << "\n[DEBUG] --- CURRENT DATABASE STATE ---\n";
+        Node* current = head;
+        int nodeCount = 0;
+
+        while (current != nullptr) {
+            std::cout << "Node " << nodeCount << " -> " 
+                      << "Acc: " << current->data.accountNumber << " | "
+                      << "Name: " << current->data.accountName << " | "
+                      << "Birthday:   " << current->data.birthday << " | "
+                      << "Contact:    " << current->data.contact << " | "
+                      << "Dep: PHP " << std::fixed << std::setprecision(2) << current->data.depositBalance << " | "
+                      << "Sav: PHP " << current->data.savingsBalance << " | "
+                      << "PIN: " << current->data.pinCode << "\n";
+            
+            current = current->next;
+            nodeCount++;
+        }
+        std::cout << "[DEBUG] Total Nodes: " << nodeCount << "\n--------------------------------------\n";
+    }
+
+    // 2. Check if a specific account actually holds the right exact data
+    void debugPrintAccount(int accNum)
+    {
+        Node* current = head;
+        while (current != nullptr) {
+            if (current->data.accountNumber == accNum) {
+                std::cout << "\n[DEBUG] --- ACCOUNT FOUND ---\n";
+                std::cout << "Account No: " << current->data.accountNumber << "\n";
+                std::cout << "Name:       " << current->data.accountName << "\n";
+                std::cout << "Birthday:   " << current->data.birthday << "\n";
+                std::cout << "Contact:    " << current->data.contact << "\n";
+                std::cout << "Deposit:    PHP " << current->data.depositBalance << "\n";
+                std::cout << "Savings:    PHP " << current->data.savingsBalance << "\n";
+                std::cout << "PIN:        " << current->data.pinCode << "\n";
+                std::cout << "-----------------------------\n";
+                return;
+            }
+            current = current->next;
+        }
+        std::cout << "[DEBUG] Account " << accNum << " not found in memory.\n";
+    }
+
+    // 3. Quick integrity check (useful to ensure no dangling pointers during deletes/inserts)
+    int debugCountNodes()
+    {
+        int count = 0;
+        Node* current = head;
+        while (current != nullptr) {
+            count++;
+            current = current->next;
+        }
+        return count;
+    }
+};
+
+class ATM {
+private:
+    BankDatabase* db;
+    
+    Account currentSession;
+    bool sessionActive;
+
+    int encryptCode(int pin){return pin ^ KEYVALUE ^ (KEYVALUE/2) ^ (KEYVALUE*13);}
+    
+    bool detectUSBAndVerifyPin(int expectedPin)
+    {
+        string codeStr;
+        int codeInt;
+        for (int i = 68; i <= 90; i++) {
+            string s = string(1, (char)i) + ":\\pin.code";
+            ifstream file(s);
+            if (file.is_open())
+            {
+                getline(file, codeStr);
+                codeInt = stoi(codeStr);
+                if (codeInt == expectedPin) return true;
+            }
+        }
+        return false;
+    }
+
+public:
+    ATM(BankDatabase* database)
+    {
+        db = database;
+        currentSession = Account();
+        sessionActive = false;
+    }
+
+    // Registration & Authentication
+    int registerAccount(Account newAcc, char driveLetter) // 0 = Success, 1 = Account already exists on drive, 2 = invalid drive, 3 = duplicate account
     { 
-        int key = getKeyPress();
-        if (key == KEY_UP) {
-            cursor_pos = (cursor_pos == 1) ? num_options : cursor_pos - 1;
-            printMenu(start_row, title, options, cursor_pos); 
-        } 
-        else if (key == KEY_DOWN) {
-            cursor_pos = (cursor_pos == num_options) ? 1 : cursor_pos + 1;
-            printMenu(start_row, title, options, cursor_pos); 
-        } 
-        else if (key == KEY_ENTER) return cursor_pos; 
-        else if (key == KEY_ESC) return -1; 
-    }
-}
+        string s = string(1, driveLetter) + ":\\" + PINFILE;
+        fstream file1(s);
+        if (file1.is_open()) return 1;
 
-/*========== HELPER: TODO SCREEN ==========*/
-void showTodoScreen(const string& title)
-{
-    clearInnerScreen();
-    printCentered(12, "--- " + title + " ---", C_CYAN);
-    printCentered(14, "= TODO input sanitation and action interface =", C_RED);
-    printCentered(16, "Press ESC to return.", C_RESET);
-    while (getKeyPress() != KEY_ESC);
-}
+        ofstream file2(s);
+        if (!file2.is_open()) return 2;
 
-/*========== MENU STATE FUNCTIONS ==========*/
-
-void runCheckBalance(ATM& atm)
-{
-    vector<string> options = {"Deposit Account", "Savings Account"};
-    while (true) {
-        clearInnerScreen();
-        int choice = runInteractiveMenu(10, "BALANCE INQUIRY", options);
-        if (choice == 1) showTodoScreen("CHECK DEPOSIT BALANCE");
-        else if (choice == 2) showTodoScreen("CHECK SAVINGS BALANCE");
-        else if (choice == -1) return; // ESC pops stack
-    }
-}
-
-void runDeposit(ATM& atm)
-{
-    showTodoScreen("DEPOSIT FUNDS");
-}
-
-void runWithdraw(ATM& atm)
-{
-    vector<string> options = {"From Deposit Account", "From Savings Account"};
-    while (true) {
-        clearInnerScreen();
-        int choice = runInteractiveMenu(10, "WITHDRAW FUNDS", options);
-        if (choice == 1) showTodoScreen("WITHDRAW FROM DEPOSIT");
-        else if (choice == 2) showTodoScreen("WITHDRAW FROM SAVINGS");
-        else if (choice == -1) return; 
-    }
-}
-
-void runSavingsTransfer(ATM& atm)
-{
-    vector<string> options = {"To Savings Account", "From Savings Account"};
-    while (true) {
-        clearInnerScreen();
-        int choice = runInteractiveMenu(10, "SAVINGS TRANSFER", options);
-        if (choice == 1) showTodoScreen("TRANSFER TO SAVINGS");
-        else if (choice == 2) showTodoScreen("TRANSFER FROM SAVINGS");
-        else if (choice == -1) return;
-    }
-}
-
-void runFundTransfer(ATM& atm)
-{
-    showTodoScreen("FUND TRANSFER");
-}
-
-void runChangePin(ATM& atm)
-{
-    showTodoScreen("CHANGE PIN");
-}
-
-void runMainHub(ATM& atm)
-{
-    vector<string> hubMenu = {
-        "Check Balance",
-        "Deposit",
-        "Withdraw",
-        "Savings Transfer",
-        "Fund Transfer",
-        "Change PIN",
-        "Logout"
+        newAcc.pinCode = encryptCode(newAcc.pinCode);
+        if (!db->insertAccount(newAcc))
+        {
+            file2.close();
+            remove(s.c_str());
+            return 3;
+        }
+        
+        file2<<newAcc.pinCode;
+        db->saveToFile();
+        return 0;
     };
 
-    while (true) 
+    bool authenticateUser(int accountNumber, int inputPin)
     {
-        clearInnerScreen();
-        int choice = runInteractiveMenu(7, "MAIN DASHBOARD", hubMenu);
-        
-        switch (choice) {
-            case 1: runCheckBalance(atm); break;
-            case 2: runDeposit(atm); break;
-            case 3: runWithdraw(atm); break;
-            case 4: runSavingsTransfer(atm); break;
-            case 5: runFundTransfer(atm); break;
-            case 6: runChangePin(atm); break;
-            case 7: 
-            case -1: // Logout or ESC
-                atm.logout();
-                return; // Pops stack back to main menu
+        int pinInt = encryptCode(inputPin);
+        db->getAccount(accountNumber, currentSession);
+        if (pinInt == currentSession.pinCode && detectUSBAndVerifyPin(pinInt))
+        {
+            sessionActive = true;
+            return true;
         }
+        logout();
+        return false;
     }
-}
-
-void runLogin(ATM& atm)
-{
-    // Temporarily routing straight to hub for skeleton testing.
-    // Replace with real input later.
-    showTodoScreen("ACCOUNT LOGIN FLOW");
+    void logout(){currentSession = Account(); sessionActive = false;}
     
-    // Simulate successful login
-    if (atm.authenticateUser(0, 0)) {
-        runMainHub(atm);
-    }
-}
-
-void runRegister(ATM& atm)
-{
-    showTodoScreen("ACCOUNT REGISTRATION FLOW");
-}
-
-void runMainMenu(ATM& atm)
-{
-    vector<string> mainMenu = {
-        "Login",
-        "Register Account",
-        "Quit Application"
-    };
-
-    while (true) 
+    float checkBalance(bool checkSavings)
     {
-        clearInnerScreen();
-        printCentered(4, "WELCOME TO THE ATM", C_GREEN);
-        
-        int choice = runInteractiveMenu(10, "MAIN MENU", mainMenu);
-        
-        if (choice == 1) runLogin(atm);
-        else if (choice == 2) runRegister(atm);
-        else if (choice == 3 || choice == -1) {
-            clearInnerScreen();
-            printCentered(14, "Shutting down...", C_RED);
-            Sleep(1000);
-            break; 
-        }
+        if (!sessionActive) return 0.0f;
+        if (checkSavings) return currentSession.savingsBalance;
+        return currentSession.depositBalance;
     }
-}
+    
+    bool deposit(float amount)
+    {
+        if (!sessionActive) return false;
+        currentSession.depositBalance += amount;
+        db->updateAccount(currentSession);
+        return true;
+    }
+    
+    bool withdraw(float amount, bool fromSavings)
+    {
+        if (!sessionActive) return false;
 
-/*========== ENTRY POINT ==========*/
-int main()
+        float *balance = (fromSavings) ? &currentSession.savingsBalance : &currentSession.depositBalance;
+        if (!(amount > *balance))
+        {
+            *balance -= amount;
+            db->updateAccount(currentSession);
+            return true;
+        }
+        return false;
+    }
+    bool savingsTransfer(float amount, bool fromSavings){
+        if (!sessionActive) return false;
+
+        float *source = (fromSavings) ? &currentSession.savingsBalance : &currentSession.depositBalance;
+        float *dest = (!fromSavings) ? &currentSession.savingsBalance : &currentSession.depositBalance;
+        if (!(amount > *source))
+        {
+            *source -= amount;
+            *dest += amount;
+            db->updateAccount(currentSession);
+            return true;
+        }
+        return false;
+    }
+    int fundTransfer(int receiverAccNum, float amount){ // 0 = success, -1 = no session running, 1 = insufficient balance, 2 = receiver account does not exist
+        if (!sessionActive) return -1;
+        if (amount > currentSession.depositBalance) return 1;
+
+        Account receiver;
+        if (!db->getAccount(receiverAccNum, receiver)) return 2;
+
+        currentSession.depositBalance -= amount;
+        receiver.depositBalance += amount;
+
+        db->updateAccount(receiver);
+        db->updateAccount(currentSession);
+        return 0;
+    }
+    
+int changePin(int oldPin, int newPin) // 0 = success, 1 = entered old pin does not match current pin, 2 = new pin is same as old pin
+    {
+        int encOld = encryptCode(oldPin);
+        int encNew = encryptCode(newPin);
+
+        if (encOld != currentSession.pinCode) return 1;
+        if (encNew == currentSession.pinCode) return 2;
+
+        currentSession.pinCode = encNew;
+        
+        for (int i = 68; i <= 90; i++) {
+            string s = string(1, (char)i) + ":\\" + PINFILE;
+            fstream file(s, ios::in); 
+            if (file.is_open()) {
+                file.close();
+                ofstream outFile(s, ios::trunc); 
+                outFile << encNew;
+                outFile.close();
+                break;
+            }
+        }
+
+        db->updateAccount(currentSession);
+        return 0;
+    }
+};
+
+int main(int argc, char const *argv[])
 {
-    initWindow();
-    drawBorder(C_BLUE);
+    // 1. Boot up the backend
+    BankDatabase db = BankDatabase();
+    db.loadFromFile();
+    
+    // Pass the memory address of our loaded db to the ATM
+    ATM atm(&db); 
 
-    ATM atm; // Initialize the state machine
-    runMainMenu(atm); // Enter the root menu
+    // ==========================================
+    // CHANGE THIS FLAG BEFORE COMPILING TO TEST
+    // 1 = DB Check, 2 = Register, 3 = Auth/Balance, 
+    // 4 = Deposit/Withdraw, 5 = Transfer
+    // ==========================================
+    int TEST_MODE = 5;
 
-    cout << C_RESET << "\033[31;1H"; 
+    switch (TEST_MODE) {
+        case 1: {
+            cout << "\n[TEST 1] --- Initial DB Load ---\n";
+            db.debugPrintAll();
+            break;
+        }
+        case 2: {
+            cout << "\n[TEST 2] --- Registration & USB Creation ---\n";
+            Account newAcc;
+            newAcc.accountNumber = 88888;
+            newAcc.pinCode = 1234; // This should get encrypted inside registerAccount!
+            strcpy(newAcc.accountName, "Test User");
+            newAcc.depositBalance = 5000.0f;
+            newAcc.isSavings = false;
+            
+            // HARDCODE YOUR ACTUAL FLASH DRIVE LETTER HERE
+            char usbDrive = 'K'; 
+            
+            int status = atm.registerAccount(newAcc, usbDrive);
+            cout << "Registration Status (0=Success): " << status << "\n";
+            
+            cout << "\n[Post-Test DB State]:\n";
+            db.debugPrintAll();
+            break;
+        }
+        case 3: {
+            cout << "\n[TEST 3] --- Login & Balance Check ---\n";
+            // Make sure your USB is plugged in for this to work!
+            bool success = atm.authenticateUser(88888, 1234);
+            
+            cout << "Login Successful: " << (success ? "TRUE" : "FALSE") << "\n";
+            if (success) {
+                cout << "Current Deposit Balance: PHP " << atm.checkBalance(false) << "\n";
+                atm.logout();
+            }
+            break;
+        }
+        case 4: {
+            cout << "\n[TEST 4] --- Deposit & Withdraw ---\n";
+            if (atm.authenticateUser(88888, 1234)) {
+                cout << "Pre-transaction Balance: PHP " << atm.checkBalance(false) << "\n";
+                
+                atm.deposit(1500.0f);
+                cout << "After 1500 Deposit: PHP " << atm.checkBalance(false) << "\n";
+                
+                bool wStatus = atm.withdraw(2000.0f, false);
+                cout << "Withdraw 2000 Status: " << (wStatus ? "SUCCESS" : "FAILED") << "\n";
+                cout << "Final Balance: PHP " << atm.checkBalance(false) << "\n";
+                
+                atm.logout();
+            } else {
+                cout << "Login failed. Check USB or credentials.\n";
+            }
+            break;
+        }
+        case 5: {
+            cout << "\n[TEST 5] --- Fund Transfer ---\n";
+            if (atm.authenticateUser(88888, 1234)) {
+                // Assuming account 12345 exists in your CSV
+                int tStatus = atm.fundTransfer(12345, 1000.0f);
+                cout << "Transfer 1000 to Acc 12345 Status: " << tStatus << "\n";
+                cout << "Sender Final Balance: PHP " << atm.checkBalance(false) << "\n";
+                
+                atm.logout();
+                
+                cout << "\n[Post-Test DB State (Check Receiver Balance)]:\n";
+                db.debugPrintAll();
+            }
+            break;
+        }
+        default:
+            cout << "Invalid TEST_MODE selected.\n";
+            break;
+    }
+
     return 0;
 }
