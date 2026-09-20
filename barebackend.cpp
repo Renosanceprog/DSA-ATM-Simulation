@@ -197,6 +197,8 @@ public:
         currentSession = Account();
         sessionActive = false;
     }
+    // getter
+    string getAccountName() { return currentSession.accountName; }
 
     // Registration & Authentication
     int registerAccount(Account newAcc, char driveLetter) // 0 = Success, 1 = Account already exists on drive, 2 = invalid drive, 3 = duplicate account

@@ -29,6 +29,33 @@ const string VALID_DECIMALS = "0123456789.";
 const string VALID_NAME = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ .-,";
 const string VALID_DRIVE = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
+/*========== SFX ENUMS ==========*/
+typedef enum {
+    SFX_MENU_MOVE, SFX_MENU_KEY_TYPING, SFX_MENU_SUCCESS, 
+    SFX_MENU_INVALID, SFX_MENU_BLOCKED, SFX_MENU_ESCAPE, SFX_MENU_CONTINUE
+} SoundID;
+
+/*========== AUDIO ENGINE ==========*/
+DWORD WINAPI SoundThread(LPVOID lpParam)
+{
+    SoundID id = (SoundID)(intptr_t)lpParam; 
+    switch (id) {
+        case SFX_MENU_MOVE:       Beep(1800, 5); break;
+        case SFX_MENU_KEY_TYPING: Beep(1200, 10); break;
+        case SFX_MENU_SUCCESS:    Beep(523, 100); Beep(659, 100); Beep(784, 100); Beep(1046, 200); break;
+        case SFX_MENU_INVALID:    Beep(150, 100); break;
+        case SFX_MENU_BLOCKED:    Beep(100, 50); Beep(100, 50); break;
+        case SFX_MENU_ESCAPE:     Beep(400, 50); Beep(300, 80); break;
+        case SFX_MENU_CONTINUE:   Beep(800, 50); Beep(1200, 50); break;
+    }
+    return 0;
+}
+
+void playAudio(SoundID id) {
+    HANDLE hThread = CreateThread(NULL, 0, SoundThread, (LPVOID)(intptr_t)id, 0, NULL);
+    if (hThread != NULL) CloseHandle(hThread); 
+}
+
 /*========== UI CORE FUNCTIONS ==========*/
 void initWindow()
 {
@@ -117,15 +144,23 @@ int runInteractiveMenu(int start_row, const string& title, const vector<string>&
     { 
         int key = getKeyPress();
         if (key == KEY_UP) {
+            playAudio(SFX_MENU_MOVE);
             cursor_pos = (cursor_pos == 1) ? num_options : cursor_pos - 1;
             printMenu(start_row, title, options, cursor_pos); 
         } 
         else if (key == KEY_DOWN) {
+            playAudio(SFX_MENU_MOVE);
             cursor_pos = (cursor_pos == num_options) ? 1 : cursor_pos + 1;
             printMenu(start_row, title, options, cursor_pos); 
         } 
-        else if (key == KEY_ENTER) return cursor_pos; 
-        else if (key == KEY_ESC) return -1; 
+        else if (key == KEY_ENTER) {
+            playAudio(SFX_MENU_CONTINUE);
+            return cursor_pos; 
+        }
+        else if (key == KEY_ESC) {
+            playAudio(SFX_MENU_ESCAPE);
+            return -1; 
+        }
     }
 }
 
@@ -166,12 +201,16 @@ bool getValidInput(int row, int col, string& buffer, int max_len, const string& 
             if (!buffer.empty()) {
                 buffer.pop_back();
                 // Erase character and caret cleanly
-                cout << "\033[" << row << ";" << col + buffer.length() << "H   "; 
+                cout << "\033[" << row << ";" << col + buffer.length() << "H   ";
+                playAudio(SFX_MENU_KEY_TYPING);
             }
         }
         else {
             if (buffer.length() < max_len && valid_chars.find((char)ch) != string::npos) {
                 buffer += (char)ch;
+                playAudio(SFX_MENU_KEY_TYPING);
+            } else if (buffer.length() >= max_len) {
+                playAudio(SFX_MENU_BLOCKED);
             }
         }
     }
@@ -214,24 +253,18 @@ bool getDateInput(int row, int col, string& buffer)
                 buffer.pop_back();
                 // Wipes line to redraw slashes correctly
                 cout << "\033[" << row << ";" << col << "H          "; 
+                playAudio(SFX_MENU_KEY_TYPING);
             }
         }
         else {
             if (buffer.length() < 8 && VALID_NUMBERS.find((char)ch) != string::npos) {
                 buffer += (char)ch;
+                playAudio(SFX_MENU_KEY_TYPING);
+            } else if (buffer.length() >= buffer.length()) {
+                playAudio(SFX_MENU_BLOCKED);
             }
         }
     }
-}
-
-/*========== HELPER: TODO SCREEN ==========*/
-void showTodoScreen(const string& title)
-{
-    clearInnerScreen();
-    printCentered(12, "--- " + title + " ---", C_CYAN);
-    printCentered(14, "= TODO input sanitation and action interface =", C_RED);
-    printCentered(16, "Press ESC to return.", C_RESET);
-    while (getKeyPress() != KEY_ESC);
 }
 
 /*========== MENU STATE FUNCTIONS ==========*/
@@ -495,8 +528,207 @@ void runSavingsTransfer(ATM& atm)
     }
 }
 
-void runFundTransfer(ATM& atm) { showTodoScreen("FUND TRANSFER"); }
-void runChangePin(ATM& atm) { showTodoScreen("CHANGE PIN"); }
+void runFundTransfer(ATM& atm)
+{
+    auto printError = [](const string& msg) {
+        cout << "\033[27;2H"; 
+        for(int i = 0; i < 76; i++) cout << " "; 
+        printCentered(27, msg, C_RED);
+    };
+    auto clearError = []() {
+        cout << "\033[27;2H";
+        for(int i = 0; i < 76; i++) cout << " "; 
+    };
+
+    float curBal = atm.checkBalance(false); // Fund transfers happen from the Deposit account
+
+    if (curBal == 0) {
+        clearInnerScreen();
+        printCentered(12, "--- FUND TRANSFER ---", C_CYAN);
+        printError("Could not start Transaction. Deposit Account has Zero Balance.");
+        printCentered(22, "[ Press ENTER to return to Dashboard ]", C_YELLOW);
+        while (getKeyPress() != KEY_ENTER);
+        return;
+    }
+
+    clearInnerScreen();
+    char buffer[100];
+    snprintf(buffer, sizeof(buffer), "Current Deposit Balance: PHP %.2f", curBal);
+    printCentered(8, buffer, C_GREEN);
+    
+    printCentered(10, "--- TRANSFER FUNDS TO ANOTHER ACCOUNT ---", C_CYAN);
+    printCentered(25, "[ Press ESC to cancel ]", C_YELLOW);
+
+    cout << "\033[14;15H" << "Receiver Account No (5 digits) : ";
+    cout << "\033[16;15H" << "Amount to Transfer         PHP : ";
+
+    string accStr, amountStr;
+    int step = 0;
+
+    while (step >= 0 && step <= 2) 
+    {
+        switch (step) 
+        {
+            case 0: // Receiver Account
+                if (!getValidInput(14, 48, accStr, 5, VALID_NUMBERS, false)) return;
+                
+                if (accStr.length() == 5) {
+                    step++; clearError();
+                } else {
+                    printError("Account Number must be exactly 5 digits.");
+                }
+                break;
+
+            case 1: // Amount
+                if (!getValidInput(16, 48, amountStr, 10, VALID_DECIMALS, false)) return;
+                
+                if (amountStr.length() > 0 && stof(amountStr) > 0) {
+                    step++; clearError();
+                } else {
+                    printError("Please enter a valid amount greater than 0.");
+                }
+                break;
+
+            case 2: // Submit to Backend
+                printCentered(20, " Processing transfer... please wait. ", C_YELLOW);
+                
+                int receiverAcc = stoi(accStr);
+                float amount = stof(amountStr);
+                
+                int status = atm.fundTransfer(receiverAcc, amount);
+                
+                if (status == 0) {
+                    clearInnerScreen();
+                    printCentered(12, "Transfer Successful!", C_GREEN);
+                    
+                    char buf[100];
+                    snprintf(buf, sizeof(buf), "New Deposit Balance: PHP %.2f", atm.checkBalance(false));
+                    printCentered(15, buf, C_RESET);
+                    
+                    printCentered(22, "[ Press ENTER to return to Dashboard ]", C_YELLOW);
+                    while (getKeyPress() != KEY_ENTER);
+                    return;
+                }
+                else if (status == 1) {
+                    // Erase processing text
+                    cout << "\033[20;2H"; for(int i=0; i<76; i++) cout << " ";
+                    printError("Transfer Failed: Insufficient Balance.");
+                    step = 1; // Jump back to Amount field
+                }
+                else if (status == 2) {
+                    cout << "\033[20;2H"; for(int i=0; i<76; i++) cout << " ";
+                    printError("Transfer Failed: Receiver Account does not exist.");
+                    step = 0; // Jump back to Account field
+                }
+                else {
+                    cout << "\033[20;2H"; for(int i=0; i<76; i++) cout << " ";
+                    printError("Session error. Please log out and try again.");
+                    return;
+                }
+                break;
+        }
+    }
+}
+void runChangePin(ATM& atm)
+{
+    clearInnerScreen();
+    printCentered(8, "--- CHANGE ACCOUNT PIN ---", C_CYAN);
+    printCentered(25, "[ Press ESC to cancel ]", C_YELLOW);
+
+    cout << "\033[12;20H" << "Enter Current 4-Digit PIN : ";
+    cout << "\033[14;20H" << "Enter NEW 4-Digit PIN     : ";
+    cout << "\033[16;20H" << "Confirm NEW 4-Digit PIN   : ";
+
+    auto printError = [](const string& msg) {
+        cout << "\033[27;2H"; 
+        for(int i = 0; i < 76; i++) cout << " "; 
+        printCentered(27, msg, C_RED);
+    };
+    auto clearError = []() {
+        cout << "\033[27;2H";
+        for(int i = 0; i < 76; i++) cout << " "; 
+    };
+
+    string oldPinStr, newPinStr, confPinStr;
+    int step = 0;
+
+    while (step >= 0 && step <= 3) 
+    {
+        switch (step) 
+        {
+            case 0: // Current PIN
+                if (!getValidInput(12, 48, oldPinStr, 4, VALID_NUMBERS, true)) return;
+                
+                if (oldPinStr.length() == 4) {
+                    step++; clearError();
+                } else {
+                    printError("PIN must be exactly 4 digits.");
+                }
+                break;
+
+            case 1: // New PIN
+                if (!getValidInput(14, 48, newPinStr, 4, VALID_NUMBERS, true)) return;
+                
+                if (newPinStr.length() == 4) {
+                    step++; clearError();
+                } else {
+                    printError("PIN must be exactly 4 digits.");
+                }
+                break;
+
+            case 2: // Confirm New PIN
+                if (!getValidInput(16, 48, confPinStr, 4, VALID_NUMBERS, true)) return;
+                
+                if (newPinStr == confPinStr) {
+                    step++; clearError();
+                } else {
+                    printError("New PINs do not match! Please try again.");
+                    confPinStr.clear();
+                    cout << "\033[16;48H    "; // Visually erase just the confirm box
+                }
+                break;
+
+            case 3: // Submit to Backend
+                printCentered(20, " Updating Security Settings... please wait. ", C_YELLOW);
+                
+                int oldPin = stoi(oldPinStr);
+                int newPin = stoi(newPinStr);
+                
+                int status = atm.changePin(oldPin, newPin);
+                
+                if (status == 0) {
+                    clearInnerScreen();
+                    printCentered(12, "PIN Changed Successfully!", C_GREEN);
+                    printCentered(14, "Your USB Drive has been securely updated.", C_RESET);
+                    
+                    printCentered(22, "[ Press ENTER to return to Dashboard ]", C_YELLOW);
+                    while (getKeyPress() != KEY_ENTER);
+                    return;
+                }
+                else if (status == 1) {
+                    cout << "\033[20;2H"; for(int i=0; i<76; i++) cout << " ";
+                    printError("Error: The Current PIN you entered is incorrect.");
+                    
+                    // Wipe the current PIN box and kick them to step 0
+                    oldPinStr.clear();
+                    cout << "\033[12;48H    ";
+                    step = 0; 
+                }
+                else if (status == 2) {
+                    cout << "\033[20;2H"; for(int i=0; i<76; i++) cout << " ";
+                    printError("Error: New PIN cannot be the same as your Current PIN.");
+                    
+                    // Wipe the new and confirm PIN boxes and kick them to step 1
+                    newPinStr.clear();
+                    confPinStr.clear();
+                    cout << "\033[14;48H    ";
+                    cout << "\033[16;48H    ";
+                    step = 1;
+                }
+                break;
+        }
+    }
+}
 
 void runMainHub(ATM& atm)
 {
@@ -610,32 +842,40 @@ void runLogin(ATM& atm)
                 }
                 break;
                 
-            case 2: // Submit to Backend
+        case 2: // Submit to Backend
             {
                 printCentered(16, " Authenticating... please wait. ", C_YELLOW);
                 
                 int accNum = stoi(accStr);
                 int pinNum = stoi(pinStr);
 
-                // Send the data to your backend
                 if (atm.authenticateUser(accNum, pinNum)) {
-                    // Login Success! Send them to the Main Hub.
+                    // Login Success!
+                    playAudio(SFX_MENU_SUCCESS);
+                    
+                    clearInnerScreen();
+                    printCentered(12, "Login Successful!", C_GREEN);
+                    
+                    // Greet the user by name
+                    string welcome = "Welcome back, " + atm.getAccountName() + "!";
+                    printCentered(14, welcome, C_RESET);
+                    
+                    printCentered(22, "[ Press ENTER to continue ]", C_YELLOW);
+                    while(getKeyPress() != KEY_ENTER);
+                    
                     runMainHub(atm);
-                    return; // When they eventually click "Logout", this returns them to the Main Menu.
+                    return; 
                 } else {
                     // Login Failed!
+                    playAudio(SFX_MENU_INVALID);
                     
-                    // Wipe the "Authenticating" text
                     cout << "\033[16;2H"; 
                     for(int i=0; i<76; i++) cout << " "; 
                     
                     printError("Login Failed: Invalid Account, PIN, or wrong USB.");
                     
-                    // Visually clear ONLY the PIN box so they can try again quickly
                     pinStr.clear();
                     cout << "\033[12;48H    "; 
-                    
-                    // Kick them back to step 1 (PIN Input)
                     step = 1; 
                 }
                 break;
@@ -813,7 +1053,7 @@ void runMainMenu(ATM& atm)
     while (true) 
     {
         clearInnerScreen();
-        printCentered(4, "WELCOME TO THE ATM", C_GREEN);
+        printCentered(4, "WELCOME TO THE BANK OF R", C_GREEN);
         
         int choice = runInteractiveMenu(10, "MAIN MENU", mainMenu);
         
